@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+
+[workspace.package]
+edition = "2021"
+authors = ["Jerome David <programingjd@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/programingjd/min_http11"

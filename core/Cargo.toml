@@ -1,0 +1,8 @@
+[package]
+name = "min_http11_core"
+version = "0.0.1"
+
+[dependencies.thiserror]
+version = "1.0"
+default-features = false
+features = []
