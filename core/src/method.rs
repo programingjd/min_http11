@@ -1,4 +1,4 @@
-use error::{Error, Result};
+use crate::error::{Error, Result};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
 
@@ -27,13 +27,10 @@ impl Method {
         self.into()
     }
     pub fn from_static(value: &'static [u8]) -> Self {
-        value.try_into().unwrap_or_else(|_| Method::Other(value))
+        value.try_into().unwrap_or(Method::Other(value))
     }
-    pub(crate) fn can_have_body(&self) -> bool {
-        match self {
-            Method::Get | Method::Head | Method::Options => false,
-            _ => true,
-        }
+    pub fn can_have_body(&self) -> bool {
+        !matches!(self, Method::Get | Method::Head | Method::Options)
     }
 }
 

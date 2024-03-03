@@ -1,8 +1,22 @@
 [package]
 name = "min_http11_core"
 version = "0.0.1"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+
 
 [dependencies.thiserror]
 version = "1.0"
 default-features = false
 features = []
+
+[dependencies.crc32fast]
+version = "1.4"
+default-features = false
+features = ["std"]
+
+[features]
+default = []
+_minimal = []

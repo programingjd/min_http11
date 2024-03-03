@@ -1,4 +1,4 @@
-use error::{Error, Result};
+use crate::error::{Error, Result};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Display, Formatter};
 
@@ -15,9 +15,7 @@ impl Version {
         self.into()
     }
     pub fn from_static(value: &'static [u8]) -> Self {
-        value
-            .try_into()
-            .unwrap_or_else(|_| Version::Unsupported(value))
+        value.try_into().unwrap_or(Version::Unsupported(value))
     }
 }
 
