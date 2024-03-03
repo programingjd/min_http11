@@ -6,4 +6,3 @@ members = ["core", "parser"]
 authors = ["Jerome David <programingjd@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/programingjd/min_http11"
-resolver = "2"
