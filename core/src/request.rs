@@ -440,17 +440,20 @@ mod test {
             HeaderName::try_from_static(b"unknown"),
             Ok(HeaderName::Other(b"unknown"))
         );
-        assert_eq!(HeaderName::owned(b"HOST").try_into(), Ok(HeaderName::Host));
         assert_eq!(
-            HeaderName::owned(b"accept").try_into(),
+            HeaderName::owned(b"HOST").unwrap().try_into(),
+            Ok(HeaderName::Host)
+        );
+        assert_eq!(
+            HeaderName::owned(b"accept").unwrap().try_into(),
             Ok(HeaderName::Accept)
         );
         assert_eq!(
-            HeaderName::owned(b"Unknown").try_into(),
+            HeaderName::owned(b"Unknown").unwrap().try_into(),
             Ok(HeaderName::Unknown(b"unknown".to_vec()))
         );
         assert_eq!(
-            HeaderName::owned(b"unknown").try_into(),
+            HeaderName::owned(b"unknown").unwrap().try_into(),
             Ok(HeaderName::Unknown(b"unknown".to_vec()))
         );
     }
