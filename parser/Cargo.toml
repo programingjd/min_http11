@@ -3,6 +3,15 @@ name = "min_http11_parser"
 version = "0.0.1"
 edition = "2021"
 resolver = "2"
+authors = ["Jerome David <programingjd@gmail.com>"]
+categories = ["web-programming::http-server"]
+description = "Minimum HTTP/1.1 request parser"
+keywords = ["http", "request", "parser"]
+license = "MIT"
+repository = "https://github.com/programingjd/min_http11"
+include = [
+    "Cargo.toml", "src", "LICENSE", "README.md"
+]
 
 [dependencies.min_http11_core]
 path = "../core"

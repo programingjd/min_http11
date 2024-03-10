@@ -4,5 +4,11 @@ members = ["core", "parser"]
 
 [workspace.package]
 authors = ["Jerome David <programingjd@gmail.com>"]
+categories = ["web-programming::http-server"]
+description = "Minimum HTTP/1.1"
+keywords = ["http", "request", "parser", "header"]
 license = "MIT"
 repository = "https://github.com/programingjd/min_http11"
+include = [
+    "Cargo.toml", "src", "LICENSE", "README.md"
+]
