@@ -13,11 +13,13 @@ mod minimal {
     pub const HOST: &[u8] = b"host";
     pub const IF_MATCH: &[u8] = b"if-match";
     pub const IF_NONE_MATCH: &[u8] = b"if-none-match";
+    pub const X_HUB_SIGNATURE_256: &[u8] = b"x-hub-signature-256";
 
     pub const CONTENT_LENGTH_HASH: u32 = 314322716;
     pub const HOST_HASH: u32 = 3475444733;
     pub const IF_MATCH_HASH: u32 = 1168849366;
     pub const IF_NONE_MATCH_HASH: u32 = 1529156225;
+    pub const X_HUB_SIGNATURE_256_HASH: u32 = 1932839174;
 
     #[cfg(feature = "_minimal")]
     #[derive(Default)]
@@ -26,6 +28,7 @@ mod minimal {
         pub host: Option<&'a [u8]>,
         pub if_match: Option<&'a [u8]>,
         pub if_none_match: Option<&'a [u8]>,
+        pub x_hub_signature_256_hash: Option<&'a [u8]>,
     }
 
     #[cfg(feature = "_minimal")]
@@ -35,6 +38,7 @@ mod minimal {
         Host,
         IfMatch,
         IfNoneMatch,
+        XHubSignature256,
 
         Other(&'static [u8]),
         Unknown(Vec<u8>),
@@ -47,6 +51,9 @@ mod minimal {
             HOST_HASH if lowercase == HOST => Ok(HeaderName::Host),
             IF_MATCH_HASH if lowercase == IF_MATCH => Ok(HeaderName::IfMatch),
             IF_NONE_MATCH_HASH if lowercase == IF_NONE_MATCH => Ok(HeaderName::IfNoneMatch),
+            X_HUB_SIGNATURE_256_HASH if lowercase == X_HUB_SIGNATURE_256 => {
+                Ok(HeaderName::XHubSignature256)
+            }
             _ => Err(Error::UnknownHeaderName(value.escape_ascii().to_string())),
         }
     }
@@ -61,6 +68,7 @@ mod minimal {
                 HeaderName::Host => Ok(HOST),
                 HeaderName::IfMatch => Ok(IF_MATCH),
                 HeaderName::IfNoneMatch => Ok(IF_NONE_MATCH),
+                HeaderName::XHubSignature256 => Ok(X_HUB_SIGNATURE_256),
                 HeaderName::Other(value) => Ok(value),
                 HeaderName::Unknown(value) => {
                     Err(Error::UnknownHeaderName(value.escape_ascii().to_string()))
@@ -75,7 +83,9 @@ mod others {
     use super::minimal::*;
     use crate::error::{Error, Result};
     use crate::hash::hash;
-    use crate::request::{CONTENT_LENGTH_HASH, HOST_HASH, IF_MATCH_HASH, IF_NONE_MATCH_HASH};
+    use crate::request::{
+        CONTENT_LENGTH_HASH, HOST_HASH, IF_MATCH_HASH, IF_NONE_MATCH_HASH, X_HUB_SIGNATURE_256_HASH,
+    };
 
     pub const ACCEPT: &[u8] = b"accept";
     pub const ACCEPT_ENCODING: &[u8] = b"accept-encoding";
@@ -151,6 +161,7 @@ mod others {
         pub x_forwarded_for: Option<&'a [u8]>,
         pub x_forwarded_host: Option<&'a [u8]>,
         pub x_read_ip: Option<&'a [u8]>,
+        pub x_hub_signature_256_hash: Option<&'a [u8]>,
     }
 
     #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -181,6 +192,7 @@ mod others {
         XForwardedFor,
         XForwardedHost,
         XReadIp,
+        XHubSignature256,
 
         Other(&'static [u8]),
         Unknown(Vec<u8>),
@@ -248,6 +260,9 @@ mod others {
             X_FORWARDED_HOST_HASH if lowercase == X_FORWARDED_HOST => {
                 Ok(crate::request::HeaderName::XForwardedHost)
             }
+            X_HUB_SIGNATURE_256_HASH if lowercase == X_HUB_SIGNATURE_256 => {
+                Ok(crate::request::HeaderName::XHubSignature256)
+            }
             X_REAL_IP_HASH if lowercase == X_REAL_IP => Ok(crate::request::HeaderName::XReadIp),
             _ => Err(Error::UnknownHeaderName(value.escape_ascii().to_string())),
         }
@@ -288,6 +303,7 @@ mod others {
                 crate::request::HeaderName::XForwardedFor => Ok(X_FORWARDED_FOR),
                 crate::request::HeaderName::XForwardedHost => Ok(X_FORWARDED_HOST),
                 crate::request::HeaderName::XReadIp => Ok(X_REAL_IP),
+                crate::request::HeaderName::XHubSignature256 => Ok(X_HUB_SIGNATURE_256),
                 crate::request::HeaderName::Other(value) => Ok(value),
                 crate::request::HeaderName::Unknown(value) => {
                     Err(Error::UnknownHeaderName(value.escape_ascii().to_string()))
@@ -427,6 +443,10 @@ mod test {
         assert_eq!(X_FORWARDED_FOR.try_into(), Ok(HeaderName::XForwardedFor));
         assert_eq!(X_FORWARDED_HOST.try_into(), Ok(HeaderName::XForwardedHost));
         assert_eq!(X_REAL_IP.try_into(), Ok(HeaderName::XReadIp));
+        assert_eq!(
+            X_HUB_SIGNATURE_256.try_into(),
+            Ok(HeaderName::XHubSignature256)
+        );
         let unknown: Result<HeaderName> = b"UNKNOWN".try_into();
         assert!(unknown.is_err());
         let unknown: Result<HeaderName> = HeaderName::try_from_static(b"Unknown");
@@ -601,6 +621,18 @@ mod test {
         assert_eq!("X-Real-Ip".try_into(), Ok(HeaderName::XReadIp));
         assert_eq!("x-real-ip".try_into(), Ok(HeaderName::XReadIp));
         assert_eq!("X-REAL-IP".try_into(), Ok(HeaderName::XReadIp));
+        assert_eq!(
+            "X-Hub-Signature-256".try_into(),
+            Ok(HeaderName::XHubSignature256)
+        );
+        assert_eq!(
+            "x-hub-signature-256".try_into(),
+            Ok(HeaderName::XHubSignature256)
+        );
+        assert_eq!(
+            "X-HUB-SIGNATURE-256".try_into(),
+            Ok(HeaderName::XHubSignature256)
+        );
         let unknown: Result<HeaderName> = "UNKNOWN".try_into();
         assert!(unknown.is_err());
     }
@@ -639,6 +671,7 @@ mod test {
         assert_eq!(HeaderName::XForwardedFor.as_ref(), X_FORWARDED_FOR);
         assert_eq!(HeaderName::XForwardedHost.as_ref(), X_FORWARDED_HOST);
         assert_eq!(HeaderName::XReadIp.as_ref(), X_REAL_IP);
+        assert_eq!(HeaderName::XHubSignature256.as_ref(), X_HUB_SIGNATURE_256);
         assert_eq!(
             HeaderName::try_from_static(b"unknown").unwrap().as_ref(),
             b"unknown"

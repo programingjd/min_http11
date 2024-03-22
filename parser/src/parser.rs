@@ -5,7 +5,8 @@ use min_http11_core::method::Method;
 
 use min_http11_core::request::{
     HeaderName, KnownHeaders, CONTENT_LENGTH, CONTENT_LENGTH_HASH, HOST, HOST_HASH, IF_MATCH,
-    IF_MATCH_HASH, IF_NONE_MATCH, IF_NONE_MATCH_HASH,
+    IF_MATCH_HASH, IF_NONE_MATCH, IF_NONE_MATCH_HASH, X_HUB_SIGNATURE_256,
+    X_HUB_SIGNATURE_256_HASH,
 };
 #[cfg(not(feature = "_minimal"))]
 use min_http11_core::request::{
@@ -26,6 +27,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use tokio::io::{AsyncBufRead, AsyncReadExt};
 use tokio::time::timeout;
+use tracing::debug;
 
 pub struct Request<'a> {
     pub method: Method,
@@ -107,7 +109,7 @@ impl Parser {
                 }
             };
             let request_line = &buffer[..request_line_end];
-            println!("{}", request_line.escape_ascii());
+            debug!("{}", request_line.escape_ascii());
             let buffer = &buffer[request_line_end + 2..];
             let mut iter = memchr_iter(SPACE, request_line);
             let first = iter.next().ok_or(Error::BadRequest)?;
@@ -142,7 +144,7 @@ impl Parser {
                     }
                     let key = &line[..first - 1];
                     let value = &line[first + 1..];
-                    println!("{}: {}", key.escape_ascii(), value.escape_ascii());
+                    debug!("{}: {}", key.escape_ascii(), value.escape_ascii());
                     if key.is_ascii_lowercase() {
                         let h = hash(key);
                         let res = _with_known_header(known_headers, h, key, value);
@@ -203,6 +205,9 @@ fn _with_known_header<'a>(
         }
         IF_NONE_MATCH_HASH if lowercase_key == IF_NONE_MATCH => {
             known_headers.if_none_match = Some(value);
+        }
+        X_HUB_SIGNATURE_256_HASH if lowercase_key == X_HUB_SIGNATURE_256 => {
+            known_headers.x_hub_signature_256_hash = Some(value);
         }
         _ => return (known_headers, true),
     }
@@ -285,6 +290,9 @@ fn _with_known_header<'a>(
         }
         X_REAL_IP_HASH if lowercase_key == X_REAL_IP => {
             known_headers.x_read_ip = Some(value);
+        }
+        X_HUB_SIGNATURE_256_HASH if lowercase_key == X_HUB_SIGNATURE_256 => {
+            known_headers.x_hub_signature_256_hash = Some(value);
         }
         _ => return (known_headers, true),
     }
