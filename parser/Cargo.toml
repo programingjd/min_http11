@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_parser"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -41,6 +41,11 @@ features = ["std"]
 version = "1.36"
 default-features = false
 features = ["test-util", "macros", "net", "rt"]
+
+[dev-dependencies.tracing-subscriber]
+version = "0.3"
+default-features = false
+features = ["std", "fmt", "ansi"]
 
 [features]
 default = []

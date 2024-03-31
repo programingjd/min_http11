@@ -38,16 +38,20 @@ pub struct Request<'a> {
 }
 
 pub struct Parser {
-    request_line_and_headers_read_timeout: Duration,
-    request_line_and_headers_max_size: u64,
+    request_line_read_timeout: Duration,
+    headers_read_timeout: Duration,
+    request_line_max_size: u64,
+    headers_max_size: u64,
     other_headers: Option<BTreeMap<u32, &'static [u8]>>,
 }
 
 impl Default for Parser {
     fn default() -> Self {
         Self {
-            request_line_and_headers_read_timeout: Duration::from_millis(200_u64),
-            request_line_and_headers_max_size: 16_384_u64,
+            request_line_read_timeout: Duration::from_millis(200_u64),
+            headers_read_timeout: Duration::from_millis(200_u64),
+            request_line_max_size: 4_096_u64,
+            headers_max_size: 16_384_u64,
             other_headers: None,
         }
     }
@@ -74,43 +78,27 @@ const SPACE: u8 = b' ';
 const COLON: u8 = b':';
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
+const CRLF: &[u8] = b"\r\n";
 const CRLF_CRLF: &[u8] = b"\r\n\r\n";
 
 impl Parser {
-    pub async fn parse_request_line_and_headers<'a, 'b, 'c: 'a>(
+    pub async fn parse_request_line<'a, 'b, 'c: 'a>(
         &'a self,
         reader: &'b mut (impl AsyncBufRead + Unpin),
         buffer: &'c mut Vec<u8>,
-    ) -> Result<(
-        Method,
-        &'c [u8],
-        KnownHeaders,
-        Option<BTreeMap<&'static [u8], &'a [u8]>>,
-    )> {
-        let request_line = timeout(self.request_line_and_headers_read_timeout, async {
-            let mut reader = reader.take(self.request_line_and_headers_max_size);
-            let n = reader.read_until_slice(CRLF_CRLF, buffer).await?;
+    ) -> Result<(Method, &'c [u8])> {
+        let request_line = timeout(self.request_line_read_timeout, async {
+            let mut reader = reader.take(self.request_line_max_size);
+            let n = reader.read_until_slice(CRLF, buffer).await?;
             if n == 0 {
                 return Err(Error::UnexpectedEndOfFile);
             }
             let buffer = &buffer[buffer.len() - n..];
-            if !buffer.ends_with(CRLF_CRLF) {
+            if !buffer.ends_with(CRLF) {
                 return Err(Error::UnexpectedEndOfFile);
             }
-            let buffer = &buffer[..buffer.len() - 2];
-            let mut iter = memchr_iter(CR, buffer);
-            let request_line_end = loop {
-                if let Some(i) = iter.next() {
-                    if i + 1 < buffer.len() && buffer[i + 1] == LF {
-                        break i;
-                    }
-                } else {
-                    return Err(Error::UnexpectedEndOfFile);
-                }
-            };
-            let request_line = &buffer[..request_line_end];
+            let request_line = &buffer[..buffer.len() - 2];
             debug!("{}", request_line.escape_ascii());
-            let buffer = &buffer[request_line_end + 2..];
             let mut iter = memchr_iter(SPACE, request_line);
             let first = iter.next().ok_or(Error::BadRequest)?;
             let second = iter.next().ok_or(Error::BadRequest)?;
@@ -120,6 +108,32 @@ impl Parser {
             let method = Method::try_from(&request_line[0..first])?;
             let path = &request_line[first + 1..second];
             let _ = Version::try_from(&request_line[second + 1..])?;
+            Ok((method, path))
+        })
+        .await;
+        let request_line = match request_line {
+            Err(_) => Err(Error::ReadTimeout)?,
+            Ok(result) => result?,
+        };
+        Ok(request_line)
+    }
+
+    pub async fn parse_headers<'a, 'b, 'c: 'a>(
+        &'a self,
+        reader: &'b mut (impl AsyncBufRead + Unpin),
+        buffer: &'c mut Vec<u8>,
+    ) -> Result<(KnownHeaders, Option<BTreeMap<&'static [u8], &'a [u8]>>)> {
+        let headers = timeout(self.headers_read_timeout, async {
+            let mut reader = reader.take(self.headers_max_size);
+            let n = reader.read_until_slice(CRLF_CRLF, buffer).await?;
+            if n == 0 {
+                return Err(Error::UnexpectedEndOfFile);
+            }
+            let buffer = &buffer[buffer.len() - n..];
+            if !buffer.ends_with(CRLF_CRLF) {
+                return Err(Error::UnexpectedEndOfFile);
+            }
+            let buffer = &buffer[..buffer.len() - 2];
             let mut known_headers = KnownHeaders::default();
             let mut custom_headers = None;
             if !buffer.is_empty() {
@@ -175,10 +189,10 @@ impl Parser {
                     };
                 }
             }
-            Ok((method, path, known_headers, custom_headers))
+            Ok((known_headers, custom_headers))
         })
         .await;
-        let request_line = match request_line {
+        let request_line = match headers {
             Err(_) => Err(Error::ReadTimeout)?,
             Ok(result) => result?,
         };
@@ -323,9 +337,15 @@ mod test {
     use super::*;
     use std::io::Cursor;
     use tokio::io::BufReader;
+    use tracing::Level;
 
     #[tokio::test(flavor = "current_thread")]
     async fn parse_request_line_and_headers() {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .with_ansi(true)
+            .compact()
+            .init();
         let parser = Parser::default();
         let bytes = b"\
             GET /test HTTP/1.1\r\n\
@@ -334,8 +354,8 @@ mod test {
         let cursor = Cursor::new(bytes);
         let mut reader = BufReader::new(cursor);
         let mut buffer = vec![];
-        let (method, path, _, _) = parser
-            .parse_request_line_and_headers(&mut reader, &mut buffer)
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
             .await
             .unwrap();
         assert_eq!(method, Method::Get);
@@ -347,12 +367,16 @@ mod test {
         ";
         let cursor = Cursor::new(bytes);
         let mut reader = BufReader::new(cursor);
-        let (method, path, known_headers, _) = parser
-            .parse_request_line_and_headers(&mut reader, &mut buffer)
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
             .await
             .unwrap();
         assert_eq!(method, Method::Head);
         assert_eq!(&path, b"/");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
         assert_eq!(known_headers.host, Some(b"example.org".as_slice()));
         let bytes = b"\
             POST /post HTTP/1.1\r\n\
@@ -364,12 +388,16 @@ mod test {
         let cursor = Cursor::new(bytes);
         let mut reader = BufReader::new(cursor);
         let mut buffer = vec![];
-        let (method, path, known_headers, _) = parser
-            .parse_request_line_and_headers(&mut reader, &mut buffer)
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
             .await
             .unwrap();
         assert_eq!(method, Method::Post);
         assert_eq!(&path, b"/post");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
         assert_eq!(known_headers.host, Some(b"example.org".as_slice()));
         #[cfg(not(feature = "_minimal"))]
         assert_eq!(
@@ -387,12 +415,16 @@ mod test {
         let mut reader = BufReader::new(cursor);
         let mut buffer = vec![];
         let parser = parser.with_header(b"x-test").unwrap();
-        let (method, path, known_headers, custom_headers) = parser
-            .parse_request_line_and_headers(&mut reader, &mut buffer)
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
             .await
             .unwrap();
         assert_eq!(method, Method::Get);
         assert_eq!(&path, b"/test");
+        let (known_headers, custom_headers) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
         assert_eq!(known_headers.host, Some(b"example.org".as_slice()));
         assert!(custom_headers.is_some());
         let custom_headers = custom_headers.unwrap();
