@@ -72,6 +72,30 @@ impl Parser {
             _ => self,
         })
     }
+    pub fn with_request_line_read_timeout(self, timeout: Duration) -> Self {
+        Parser {
+            request_line_read_timeout: timeout,
+            ..self
+        }
+    }
+    pub fn with_headers_read_timeout(self, timeout: Duration) -> Self {
+        Parser {
+            headers_read_timeout: timeout,
+            ..self
+        }
+    }
+    pub fn with_request_line_max_size(self, size: u16) -> Self {
+        Parser {
+            request_line_max_size: size as u64,
+            ..self
+        }
+    }
+    pub fn with_headers_max_size(self, size: u16) -> Self {
+        Parser {
+            headers_max_size: size as u64,
+            ..self
+        }
+    }
 }
 
 const SPACE: u8 = b' ';
