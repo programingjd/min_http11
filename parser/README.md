@@ -3,7 +3,7 @@
 ```rust
 let mut reader = BufReader::new(reader);
 let mut buffer = vec![];
-let (method, path, known_headers, _other_headers) = Parser::default ()
-.parse_request_line_and_headers( & mut reader, & mut buffer)
-.await?;
+let (method, path, known_headers, _other_headers) = Parser::default()
+    .parse_request_line_and_headers( & mut reader, & mut buffer)
+    .await?;
 ```
