@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_parser"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -14,7 +14,7 @@ include = [
 ]
 
 [dependencies.min_http11_core]
-version = "0.1.1"
+version = "0.1.2"
 path = "../core"
 default-features = false
 features = []
