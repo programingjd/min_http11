@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_parser"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -20,7 +20,7 @@ default-features = false
 features = []
 
 [dependencies.tokio]
-version = "1.40"
+version = "1.42"
 default-features = false
 features = ["io-util", "time"]
 
@@ -38,7 +38,7 @@ default-features = false
 features = ["std"]
 
 [dev-dependencies.tokio]
-version = "1.40"
+version = "1.42"
 default-features = false
 features = ["test-util", "macros", "net", "rt"]
 

@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_core"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -17,7 +17,7 @@ include = [
 
 
 [dependencies.thiserror]
-version = "1.0"
+version = "2.0"
 default-features = false
 features = []
 
