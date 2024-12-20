@@ -146,7 +146,7 @@ impl Parser {
         &'a self,
         reader: &'b mut (impl AsyncBufRead + Unpin),
         buffer: &'c mut Vec<u8>,
-    ) -> Result<(KnownHeaders, Option<BTreeMap<&'static [u8], &'a [u8]>>)> {
+    ) -> Result<(KnownHeaders<'a>, Option<BTreeMap<&'static [u8], &'a [u8]>>)> {
         let headers = timeout(self.headers_read_timeout, async {
             let mut reader = reader.take(self.headers_max_size);
             let n = reader.read_until_slice(CRLF_CRLF, buffer).await?;
