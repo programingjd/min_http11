@@ -1,7 +1,7 @@
 [package]
 name = "min_http11_core"
-version = "0.1.7"
-edition = "2021"
+version = "0.1.8"
+edition = "2024"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
 categories = ["web-programming::http-server"]

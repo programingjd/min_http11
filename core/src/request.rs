@@ -103,6 +103,14 @@ mod others {
     pub const IF_UNMODIFIED_SINCE: &[u8] = b"if-unmodified-since";
     pub const ORIGIN: &[u8] = b"origin";
     pub const RANGE: &[u8] = b"range";
+    pub const REFERER: &[u8] = b"referer";
+    pub const SEC_CH_UA: &[u8] = b"sec-ch-ua";
+    pub const SEC_CH_UA_MOBILE: &[u8] = b"sec-ch-ua-mobile";
+    pub const SEC_CH_UA_PLATFORM: &[u8] = b"sec-ch-ua-platform";
+    pub const SEC_FETCH_DEST: &[u8] = b"sec-fetch-dest";
+    pub const SEC_FETCH_MODE: &[u8] = b"sec-fetch-mode";
+    pub const SEC_FETCH_SITE: &[u8] = b"sec-fetch-site";
+    pub const SEC_FETCH_USER: &[u8] = b"sec-fetch-user";
     pub const TRANSFER_ENCODING: &[u8] = b"transfer-encoding";
     pub const USER_AGENT: &[u8] = b"user-agent";
     pub const X_CSRF_TOKEN: &[u8] = b"x-csrf-token";
@@ -126,6 +134,14 @@ mod others {
     pub const IF_UNMODIFIED_SINCE_HASH: u32 = 462614015;
     pub const ORIGIN_HASH: u32 = 3740358174;
     pub const RANGE_HASH: u32 = 2475121225;
+    pub const REFERER_HASH: u32 = 1440495237;
+    pub const SEC_CH_UA_HASH: u32 = 3458784846;
+    pub const SEC_CH_UA_MOBILE_HASH: u32 = 3851717610;
+    pub const SEC_CH_UA_PLATFORM_HASH: u32 = 464571004;
+    pub const SEC_FETCH_DEST_HASH: u32 = 1781535743;
+    pub const SEC_FETCH_MODE_HASH: u32 = 1973190087;
+    pub const SEC_FETCH_SITE_HASH: u32 = 2333422472;
+    pub const SEC_FETCH_USER_HASH: u32 = 1875242021;
     pub const TRANSFER_ENCODING_HASH: u32 = 1470906230;
     pub const USER_AGENT_HASH: u32 = 2191772431;
     pub const X_CSRF_TOKEN_HASH: u32 = 3276872746;
@@ -155,6 +171,14 @@ mod others {
         pub if_unmodified_since: Option<&'a [u8]>,
         pub origin: Option<&'a [u8]>,
         pub range: Option<&'a [u8]>,
+        pub referer: Option<&'a [u8]>,
+        pub sec_ch_ua: Option<&'a [u8]>,
+        pub sec_ch_ua_mobile: Option<&'a [u8]>,
+        pub sec_ch_ua_platform: Option<&'a [u8]>,
+        pub sec_fetch_dest: Option<&'a [u8]>,
+        pub sec_fetch_mode: Option<&'a [u8]>,
+        pub sec_fetch_site: Option<&'a [u8]>,
+        pub sec_fetch_user: Option<&'a [u8]>,
         pub transfer_encoding: Option<&'a [u8]>,
         pub user_agent: Option<&'a [u8]>,
         pub x_csrf_token: Option<&'a [u8]>,
@@ -186,6 +210,14 @@ mod others {
         IfUnmodifiedSince,
         Origin,
         Range,
+        Referer,
+        SecChUa,
+        SecChUaMobile,
+        SecChUaPlatform,
+        SecFetchDest,
+        SecFetchMode,
+        SecFetchSite,
+        SecFetchUser,
         TransferEncoding,
         UserAgent,
         XCSRFToken,
@@ -247,6 +279,26 @@ mod others {
             }
             ORIGIN_HASH if lowercase == ORIGIN => Ok(crate::request::HeaderName::Origin),
             RANGE_HASH if lowercase == RANGE => Ok(crate::request::HeaderName::Range),
+            REFERER_HASH if lowercase == REFERER => Ok(crate::request::HeaderName::Referer),
+            SEC_CH_UA_HASH if lowercase == SEC_CH_UA => Ok(crate::request::HeaderName::SecChUa),
+            SEC_CH_UA_MOBILE_HASH if lowercase == SEC_CH_UA_MOBILE => {
+                Ok(crate::request::HeaderName::SecChUaMobile)
+            }
+            SEC_CH_UA_PLATFORM_HASH if lowercase == SEC_CH_UA_PLATFORM => {
+                Ok(crate::request::HeaderName::SecChUaPlatform)
+            }
+            SEC_FETCH_DEST_HASH if lowercase == SEC_FETCH_DEST => {
+                Ok(crate::request::HeaderName::SecFetchDest)
+            }
+            SEC_FETCH_MODE_HASH if lowercase == SEC_FETCH_MODE => {
+                Ok(crate::request::HeaderName::SecFetchMode)
+            }
+            SEC_FETCH_SITE_HASH if lowercase == SEC_FETCH_SITE => {
+                Ok(crate::request::HeaderName::SecFetchSite)
+            }
+            SEC_FETCH_USER_HASH if lowercase == SEC_FETCH_USER => {
+                Ok(crate::request::HeaderName::SecFetchUser)
+            }
             TRANSFER_ENCODING_HASH if lowercase == TRANSFER_ENCODING => {
                 Ok(crate::request::HeaderName::TransferEncoding)
             }
@@ -297,6 +349,14 @@ mod others {
                 crate::request::HeaderName::IfUnmodifiedSince => Ok(IF_UNMODIFIED_SINCE),
                 crate::request::HeaderName::Origin => Ok(ORIGIN),
                 crate::request::HeaderName::Range => Ok(RANGE),
+                crate::request::HeaderName::Referer => Ok(REFERER),
+                crate::request::HeaderName::SecChUa => Ok(SEC_CH_UA),
+                crate::request::HeaderName::SecChUaMobile => Ok(SEC_CH_UA_MOBILE),
+                crate::request::HeaderName::SecChUaPlatform => Ok(SEC_CH_UA_PLATFORM),
+                crate::request::HeaderName::SecFetchDest => Ok(SEC_FETCH_DEST),
+                crate::request::HeaderName::SecFetchMode => Ok(SEC_FETCH_MODE),
+                crate::request::HeaderName::SecFetchSite => Ok(SEC_FETCH_SITE),
+                crate::request::HeaderName::SecFetchUser => Ok(SEC_FETCH_USER),
                 crate::request::HeaderName::TransferEncoding => Ok(TRANSFER_ENCODING),
                 crate::request::HeaderName::UserAgent => Ok(USER_AGENT),
                 crate::request::HeaderName::XCSRFToken => Ok(X_CSRF_TOKEN),
@@ -434,6 +494,17 @@ mod test {
         );
         assert_eq!(ORIGIN.try_into(), Ok(HeaderName::Origin));
         assert_eq!(RANGE.try_into(), Ok(HeaderName::Range));
+        assert_eq!(REFERER.try_into(), Ok(HeaderName::Referer));
+        assert_eq!(SEC_CH_UA.try_into(), Ok(HeaderName::SecChUa));
+        assert_eq!(SEC_CH_UA_MOBILE.try_into(), Ok(HeaderName::SecChUaMobile));
+        assert_eq!(
+            SEC_CH_UA_PLATFORM.try_into(),
+            Ok(HeaderName::SecChUaPlatform)
+        );
+        assert_eq!(SEC_FETCH_DEST.try_into(), Ok(HeaderName::SecFetchDest));
+        assert_eq!(SEC_FETCH_MODE.try_into(), Ok(HeaderName::SecFetchMode));
+        assert_eq!(SEC_FETCH_SITE.try_into(), Ok(HeaderName::SecFetchSite));
+        assert_eq!(SEC_FETCH_USER.try_into(), Ok(HeaderName::SecFetchUser));
         assert_eq!(
             TRANSFER_ENCODING.try_into(),
             Ok(HeaderName::TransferEncoding)
@@ -585,6 +656,39 @@ mod test {
         assert_eq!("Range".try_into(), Ok(HeaderName::Range));
         assert_eq!("range".try_into(), Ok(HeaderName::Range));
         assert_eq!("RANGE".try_into(), Ok(HeaderName::Range));
+        assert_eq!("Referer".try_into(), Ok(HeaderName::Referer));
+        assert_eq!("referer".try_into(), Ok(HeaderName::Referer));
+        assert_eq!("REFERER".try_into(), Ok(HeaderName::Referer));
+        assert_eq!("Sec-Ch-Ua".try_into(), Ok(HeaderName::SecChUa));
+        assert_eq!("sec-ch-ua".try_into(), Ok(HeaderName::SecChUa));
+        assert_eq!("SEC-CH-UA".try_into(), Ok(HeaderName::SecChUa));
+        assert_eq!("Sec-Ch-Ua-Mobile".try_into(), Ok(HeaderName::SecChUaMobile));
+        assert_eq!("sec-ch-ua-mobile".try_into(), Ok(HeaderName::SecChUaMobile));
+        assert_eq!("SEC-CH-UA-MOBILE".try_into(), Ok(HeaderName::SecChUaMobile));
+        assert_eq!(
+            "Sec-Ch-Ua-Platform".try_into(),
+            Ok(HeaderName::SecChUaPlatform)
+        );
+        assert_eq!(
+            "sec-ch-ua-platform".try_into(),
+            Ok(HeaderName::SecChUaPlatform)
+        );
+        assert_eq!(
+            "SEC-CH-UA-PLATFORM".try_into(),
+            Ok(HeaderName::SecChUaPlatform)
+        );
+        assert_eq!("sec-fetch-dest".try_into(), Ok(HeaderName::SecFetchDest));
+        assert_eq!("Sec-Fetch-Dest".try_into(), Ok(HeaderName::SecFetchDest));
+        assert_eq!("SEC-FETCH-DEST".try_into(), Ok(HeaderName::SecFetchDest));
+        assert_eq!("sec-fetch-mode".try_into(), Ok(HeaderName::SecFetchMode));
+        assert_eq!("Sec-Fetch-Mode".try_into(), Ok(HeaderName::SecFetchMode));
+        assert_eq!("SEC-FETCH-MODE".try_into(), Ok(HeaderName::SecFetchMode));
+        assert_eq!("sec-fetch-site".try_into(), Ok(HeaderName::SecFetchSite));
+        assert_eq!("Sec-Fetch-Site".try_into(), Ok(HeaderName::SecFetchSite));
+        assert_eq!("SEC-FETCH-SITE".try_into(), Ok(HeaderName::SecFetchSite));
+        assert_eq!("sec-fetch-user".try_into(), Ok(HeaderName::SecFetchUser));
+        assert_eq!("Sec-Fetch-User".try_into(), Ok(HeaderName::SecFetchUser));
+        assert_eq!("SEC-FETCH-USER".try_into(), Ok(HeaderName::SecFetchUser));
         assert_eq!(
             "Transfer-Encoding".try_into(),
             Ok(HeaderName::TransferEncoding)
