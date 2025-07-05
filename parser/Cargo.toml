@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_parser"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2024"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -14,13 +14,13 @@ include = [
 ]
 
 [dependencies.min_http11_core]
-version = "0.1.8"
+version = "0.1.9"
 path = "../core"
 default-features = false
 features = []
 
 [dependencies.tokio]
-version = "1.45"
+version = "1.46"
 default-features = false
 features = ["io-util", "time"]
 
@@ -38,7 +38,7 @@ default-features = false
 features = ["std"]
 
 [dev-dependencies.tokio]
-version = "1.45"
+version = "1.46"
 default-features = false
 features = ["test-util", "macros", "net", "rt"]
 
