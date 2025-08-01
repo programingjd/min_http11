@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_core"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2024"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -22,7 +22,7 @@ default-features = false
 features = []
 
 [dependencies.crc32fast]
-version = "1.4"
+version = "1.5"
 default-features = false
 features = ["std"]
 
