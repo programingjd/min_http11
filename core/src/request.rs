@@ -11,12 +11,14 @@ mod minimal {
 
     pub const CONTENT_LENGTH: &[u8] = b"content-length";
     pub const HOST: &[u8] = b"host";
+    pub const TRANSFER_ENCODING: &[u8] = b"transfer-encoding";
     pub const IF_MATCH: &[u8] = b"if-match";
     pub const IF_NONE_MATCH: &[u8] = b"if-none-match";
     pub const X_HUB_SIGNATURE_256: &[u8] = b"x-hub-signature-256";
 
     pub const CONTENT_LENGTH_HASH: u32 = 314322716;
     pub const HOST_HASH: u32 = 3475444733;
+    pub const TRANSFER_ENCODING_HASH: u32 = 1470906230;
     pub const IF_MATCH_HASH: u32 = 1168849366;
     pub const IF_NONE_MATCH_HASH: u32 = 1529156225;
     pub const X_HUB_SIGNATURE_256_HASH: u32 = 1932839174;
@@ -26,6 +28,7 @@ mod minimal {
     pub struct KnownHeaders<'a> {
         pub content_length: Option<&'a [u8]>,
         pub host: Option<&'a [u8]>,
+        pub transfer_encoding: Option<&'a [u8]>,
         pub if_match: Option<&'a [u8]>,
         pub if_none_match: Option<&'a [u8]>,
         pub x_hub_signature_256_hash: Option<&'a [u8]>,
@@ -36,6 +39,7 @@ mod minimal {
     pub enum HeaderName {
         ContentLength,
         Host,
+        TransferEncoding,
         IfMatch,
         IfNoneMatch,
         XHubSignature256,
@@ -49,6 +53,9 @@ mod minimal {
         match hash(lowercase) {
             CONTENT_LENGTH_HASH if lowercase == CONTENT_LENGTH => Ok(HeaderName::ContentLength),
             HOST_HASH if lowercase == HOST => Ok(HeaderName::Host),
+            TRANSFER_ENCODING_HASH if lowercase == TRANSFER_ENCODING => {
+                Ok(HeaderName::TransferEncoding)
+            }
             IF_MATCH_HASH if lowercase == IF_MATCH => Ok(HeaderName::IfMatch),
             IF_NONE_MATCH_HASH if lowercase == IF_NONE_MATCH => Ok(HeaderName::IfNoneMatch),
             X_HUB_SIGNATURE_256_HASH if lowercase == X_HUB_SIGNATURE_256 => {
@@ -66,6 +73,7 @@ mod minimal {
             match value {
                 HeaderName::ContentLength => Ok(CONTENT_LENGTH),
                 HeaderName::Host => Ok(HOST),
+                HeaderName::TransferEncoding => Ok(TRANSFER_ENCODING),
                 HeaderName::IfMatch => Ok(IF_MATCH),
                 HeaderName::IfNoneMatch => Ok(IF_NONE_MATCH),
                 HeaderName::XHubSignature256 => Ok(X_HUB_SIGNATURE_256),
@@ -111,7 +119,6 @@ mod others {
     pub const SEC_FETCH_MODE: &[u8] = b"sec-fetch-mode";
     pub const SEC_FETCH_SITE: &[u8] = b"sec-fetch-site";
     pub const SEC_FETCH_USER: &[u8] = b"sec-fetch-user";
-    pub const TRANSFER_ENCODING: &[u8] = b"transfer-encoding";
     pub const USER_AGENT: &[u8] = b"user-agent";
     pub const X_CSRF_TOKEN: &[u8] = b"x-csrf-token";
     pub const X_FORWARDED_FOR: &[u8] = b"x-forwarded-for";
@@ -142,7 +149,6 @@ mod others {
     pub const SEC_FETCH_MODE_HASH: u32 = 1973190087;
     pub const SEC_FETCH_SITE_HASH: u32 = 2333422472;
     pub const SEC_FETCH_USER_HASH: u32 = 1875242021;
-    pub const TRANSFER_ENCODING_HASH: u32 = 1470906230;
     pub const USER_AGENT_HASH: u32 = 2191772431;
     pub const X_CSRF_TOKEN_HASH: u32 = 3276872746;
     pub const X_FORWARDED_FOR_HASH: u32 = 2397052407;
@@ -184,7 +190,7 @@ mod others {
         pub x_csrf_token: Option<&'a [u8]>,
         pub x_forwarded_for: Option<&'a [u8]>,
         pub x_forwarded_host: Option<&'a [u8]>,
-        pub x_read_ip: Option<&'a [u8]>,
+        pub x_real_ip: Option<&'a [u8]>,
         pub x_hub_signature_256_hash: Option<&'a [u8]>,
     }
 
@@ -223,149 +229,114 @@ mod others {
         XCSRFToken,
         XForwardedFor,
         XForwardedHost,
-        XReadIp,
+        XRealIp,
         XHubSignature256,
 
         Other(&'static [u8]),
         Unknown(Vec<u8>),
     }
 
-    pub(crate) fn _try_from_lowercase(
-        value: &[u8],
-        lowercase: &[u8],
-    ) -> Result<crate::request::HeaderName> {
+    pub(crate) fn _try_from_lowercase(value: &[u8], lowercase: &[u8]) -> Result<HeaderName> {
         match hash(lowercase) {
-            ACCEPT_HASH if lowercase == ACCEPT => Ok(crate::request::HeaderName::Accept),
-            ACCEPT_ENCODING_HASH if lowercase == ACCEPT_ENCODING => {
-                Ok(crate::request::HeaderName::AcceptEncoding)
-            }
-            ACCEPT_LANGUAGE_HASH if lowercase == ACCEPT_LANGUAGE => {
-                Ok(crate::request::HeaderName::AcceptLanguage)
-            }
+            ACCEPT_HASH if lowercase == ACCEPT => Ok(HeaderName::Accept),
+            ACCEPT_ENCODING_HASH if lowercase == ACCEPT_ENCODING => Ok(HeaderName::AcceptEncoding),
+            ACCEPT_LANGUAGE_HASH if lowercase == ACCEPT_LANGUAGE => Ok(HeaderName::AcceptLanguage),
             ACCESS_CONTROL_REQUEST_HEADERS_HASH if lowercase == ACCESS_CONTROL_REQUEST_HEADERS => {
-                Ok(crate::request::HeaderName::AccessControlRequestHeaders)
+                Ok(HeaderName::AccessControlRequestHeaders)
             }
             ACCESS_CONTROL_REQUEST_METHOD_HASH if lowercase == ACCESS_CONTROL_REQUEST_METHOD => {
-                Ok(crate::request::HeaderName::AccessControlRequestMethod)
+                Ok(HeaderName::AccessControlRequestMethod)
             }
-            AUTHORIZATION_HASH if lowercase == AUTHORIZATION => {
-                Ok(crate::request::HeaderName::Authorization)
-            }
-            CONNECTION_HASH if lowercase == CONNECTION => {
-                Ok(crate::request::HeaderName::Connection)
-            }
+            AUTHORIZATION_HASH if lowercase == AUTHORIZATION => Ok(HeaderName::Authorization),
+            CONNECTION_HASH if lowercase == CONNECTION => Ok(HeaderName::Connection),
             CONTENT_ENCODING_HASH if lowercase == CONTENT_ENCODING => {
-                Ok(crate::request::HeaderName::ContentEncoding)
+                Ok(HeaderName::ContentEncoding)
             }
-            CONTENT_LENGTH_HASH if lowercase == CONTENT_LENGTH => {
-                Ok(crate::request::HeaderName::ContentLength)
-            }
-            CONTENT_TYPE_HASH if lowercase == CONTENT_TYPE => {
-                Ok(crate::request::HeaderName::ContentType)
-            }
-            COOKIE_HASH if lowercase == COOKIE => Ok(crate::request::HeaderName::Cookie),
-            EXPECT_HASH if lowercase == EXPECT => Ok(crate::request::HeaderName::Expect),
-            HOST_HASH if lowercase == HOST => Ok(crate::request::HeaderName::Host),
-            IF_MATCH_HASH if lowercase == IF_MATCH => Ok(crate::request::HeaderName::IfMatch),
+            CONTENT_LENGTH_HASH if lowercase == CONTENT_LENGTH => Ok(HeaderName::ContentLength),
+            CONTENT_TYPE_HASH if lowercase == CONTENT_TYPE => Ok(HeaderName::ContentType),
+            COOKIE_HASH if lowercase == COOKIE => Ok(HeaderName::Cookie),
+            EXPECT_HASH if lowercase == EXPECT => Ok(HeaderName::Expect),
+            HOST_HASH if lowercase == HOST => Ok(HeaderName::Host),
+            IF_MATCH_HASH if lowercase == IF_MATCH => Ok(HeaderName::IfMatch),
             IF_MODIFIED_SINCE_HASH if lowercase == IF_MODIFIED_SINCE => {
-                Ok(crate::request::HeaderName::IfModifiedSince)
+                Ok(HeaderName::IfModifiedSince)
             }
-            IF_NONE_MATCH_HASH if lowercase == IF_NONE_MATCH => {
-                Ok(crate::request::HeaderName::IfNoneMatch)
-            }
-            IF_RANGE_HASH if lowercase == IF_RANGE => Ok(crate::request::HeaderName::IfRange),
+            IF_NONE_MATCH_HASH if lowercase == IF_NONE_MATCH => Ok(HeaderName::IfNoneMatch),
+            IF_RANGE_HASH if lowercase == IF_RANGE => Ok(HeaderName::IfRange),
             IF_UNMODIFIED_SINCE_HASH if lowercase == IF_UNMODIFIED_SINCE => {
-                Ok(crate::request::HeaderName::IfUnmodifiedSince)
+                Ok(HeaderName::IfUnmodifiedSince)
             }
-            ORIGIN_HASH if lowercase == ORIGIN => Ok(crate::request::HeaderName::Origin),
-            RANGE_HASH if lowercase == RANGE => Ok(crate::request::HeaderName::Range),
-            REFERER_HASH if lowercase == REFERER => Ok(crate::request::HeaderName::Referer),
-            SEC_CH_UA_HASH if lowercase == SEC_CH_UA => Ok(crate::request::HeaderName::SecChUa),
-            SEC_CH_UA_MOBILE_HASH if lowercase == SEC_CH_UA_MOBILE => {
-                Ok(crate::request::HeaderName::SecChUaMobile)
-            }
+            ORIGIN_HASH if lowercase == ORIGIN => Ok(HeaderName::Origin),
+            RANGE_HASH if lowercase == RANGE => Ok(HeaderName::Range),
+            REFERER_HASH if lowercase == REFERER => Ok(HeaderName::Referer),
+            SEC_CH_UA_HASH if lowercase == SEC_CH_UA => Ok(HeaderName::SecChUa),
+            SEC_CH_UA_MOBILE_HASH if lowercase == SEC_CH_UA_MOBILE => Ok(HeaderName::SecChUaMobile),
             SEC_CH_UA_PLATFORM_HASH if lowercase == SEC_CH_UA_PLATFORM => {
-                Ok(crate::request::HeaderName::SecChUaPlatform)
+                Ok(HeaderName::SecChUaPlatform)
             }
-            SEC_FETCH_DEST_HASH if lowercase == SEC_FETCH_DEST => {
-                Ok(crate::request::HeaderName::SecFetchDest)
-            }
-            SEC_FETCH_MODE_HASH if lowercase == SEC_FETCH_MODE => {
-                Ok(crate::request::HeaderName::SecFetchMode)
-            }
-            SEC_FETCH_SITE_HASH if lowercase == SEC_FETCH_SITE => {
-                Ok(crate::request::HeaderName::SecFetchSite)
-            }
-            SEC_FETCH_USER_HASH if lowercase == SEC_FETCH_USER => {
-                Ok(crate::request::HeaderName::SecFetchUser)
-            }
+            SEC_FETCH_DEST_HASH if lowercase == SEC_FETCH_DEST => Ok(HeaderName::SecFetchDest),
+            SEC_FETCH_MODE_HASH if lowercase == SEC_FETCH_MODE => Ok(HeaderName::SecFetchMode),
+            SEC_FETCH_SITE_HASH if lowercase == SEC_FETCH_SITE => Ok(HeaderName::SecFetchSite),
+            SEC_FETCH_USER_HASH if lowercase == SEC_FETCH_USER => Ok(HeaderName::SecFetchUser),
             TRANSFER_ENCODING_HASH if lowercase == TRANSFER_ENCODING => {
-                Ok(crate::request::HeaderName::TransferEncoding)
+                Ok(HeaderName::TransferEncoding)
             }
-            USER_AGENT_HASH if lowercase == USER_AGENT => Ok(crate::request::HeaderName::UserAgent),
-            X_CSRF_TOKEN_HASH if lowercase == X_CSRF_TOKEN => {
-                Ok(crate::request::HeaderName::XCSRFToken)
-            }
-            X_FORWARDED_FOR_HASH if lowercase == X_FORWARDED_FOR => {
-                Ok(crate::request::HeaderName::XForwardedFor)
-            }
+            USER_AGENT_HASH if lowercase == USER_AGENT => Ok(HeaderName::UserAgent),
+            X_CSRF_TOKEN_HASH if lowercase == X_CSRF_TOKEN => Ok(HeaderName::XCSRFToken),
+            X_FORWARDED_FOR_HASH if lowercase == X_FORWARDED_FOR => Ok(HeaderName::XForwardedFor),
             X_FORWARDED_HOST_HASH if lowercase == X_FORWARDED_HOST => {
-                Ok(crate::request::HeaderName::XForwardedHost)
+                Ok(HeaderName::XForwardedHost)
             }
             X_HUB_SIGNATURE_256_HASH if lowercase == X_HUB_SIGNATURE_256 => {
-                Ok(crate::request::HeaderName::XHubSignature256)
+                Ok(HeaderName::XHubSignature256)
             }
-            X_REAL_IP_HASH if lowercase == X_REAL_IP => Ok(crate::request::HeaderName::XReadIp),
+            X_REAL_IP_HASH if lowercase == X_REAL_IP => Ok(HeaderName::XRealIp),
             _ => Err(Error::UnknownHeaderName(value.escape_ascii().to_string())),
         }
     }
 
-    impl TryFrom<&crate::request::HeaderName> for &'static [u8] {
+    impl TryFrom<&HeaderName> for &'static [u8] {
         type Error = Error;
 
-        fn try_from(value: &crate::request::HeaderName) -> Result<Self> {
+        fn try_from(value: &HeaderName) -> Result<Self> {
             match value {
-                crate::request::HeaderName::Accept => Ok(ACCEPT),
-                crate::request::HeaderName::AcceptEncoding => Ok(ACCEPT_ENCODING),
-                crate::request::HeaderName::AcceptLanguage => Ok(ACCEPT_LANGUAGE),
-                crate::request::HeaderName::AccessControlRequestHeaders => {
-                    Ok(ACCESS_CONTROL_REQUEST_HEADERS)
-                }
-                crate::request::HeaderName::AccessControlRequestMethod => {
-                    Ok(ACCESS_CONTROL_REQUEST_METHOD)
-                }
-                crate::request::HeaderName::Authorization => Ok(AUTHORIZATION),
-                crate::request::HeaderName::Connection => Ok(CONNECTION),
-                crate::request::HeaderName::ContentEncoding => Ok(CONTENT_ENCODING),
-                crate::request::HeaderName::ContentLength => Ok(CONTENT_LENGTH),
-                crate::request::HeaderName::ContentType => Ok(CONTENT_TYPE),
-                crate::request::HeaderName::Cookie => Ok(COOKIE),
-                crate::request::HeaderName::Expect => Ok(EXPECT),
-                crate::request::HeaderName::Host => Ok(HOST),
-                crate::request::HeaderName::IfMatch => Ok(IF_MATCH),
-                crate::request::HeaderName::IfModifiedSince => Ok(IF_MODIFIED_SINCE),
-                crate::request::HeaderName::IfNoneMatch => Ok(IF_NONE_MATCH),
-                crate::request::HeaderName::IfRange => Ok(IF_RANGE),
-                crate::request::HeaderName::IfUnmodifiedSince => Ok(IF_UNMODIFIED_SINCE),
-                crate::request::HeaderName::Origin => Ok(ORIGIN),
-                crate::request::HeaderName::Range => Ok(RANGE),
-                crate::request::HeaderName::Referer => Ok(REFERER),
-                crate::request::HeaderName::SecChUa => Ok(SEC_CH_UA),
-                crate::request::HeaderName::SecChUaMobile => Ok(SEC_CH_UA_MOBILE),
-                crate::request::HeaderName::SecChUaPlatform => Ok(SEC_CH_UA_PLATFORM),
-                crate::request::HeaderName::SecFetchDest => Ok(SEC_FETCH_DEST),
-                crate::request::HeaderName::SecFetchMode => Ok(SEC_FETCH_MODE),
-                crate::request::HeaderName::SecFetchSite => Ok(SEC_FETCH_SITE),
-                crate::request::HeaderName::SecFetchUser => Ok(SEC_FETCH_USER),
-                crate::request::HeaderName::TransferEncoding => Ok(TRANSFER_ENCODING),
-                crate::request::HeaderName::UserAgent => Ok(USER_AGENT),
-                crate::request::HeaderName::XCSRFToken => Ok(X_CSRF_TOKEN),
-                crate::request::HeaderName::XForwardedFor => Ok(X_FORWARDED_FOR),
-                crate::request::HeaderName::XForwardedHost => Ok(X_FORWARDED_HOST),
-                crate::request::HeaderName::XReadIp => Ok(X_REAL_IP),
-                crate::request::HeaderName::XHubSignature256 => Ok(X_HUB_SIGNATURE_256),
-                crate::request::HeaderName::Other(value) => Ok(value),
-                crate::request::HeaderName::Unknown(value) => {
+                HeaderName::Accept => Ok(ACCEPT),
+                HeaderName::AcceptEncoding => Ok(ACCEPT_ENCODING),
+                HeaderName::AcceptLanguage => Ok(ACCEPT_LANGUAGE),
+                HeaderName::AccessControlRequestHeaders => Ok(ACCESS_CONTROL_REQUEST_HEADERS),
+                HeaderName::AccessControlRequestMethod => Ok(ACCESS_CONTROL_REQUEST_METHOD),
+                HeaderName::Authorization => Ok(AUTHORIZATION),
+                HeaderName::Connection => Ok(CONNECTION),
+                HeaderName::ContentEncoding => Ok(CONTENT_ENCODING),
+                HeaderName::ContentLength => Ok(CONTENT_LENGTH),
+                HeaderName::ContentType => Ok(CONTENT_TYPE),
+                HeaderName::Cookie => Ok(COOKIE),
+                HeaderName::Expect => Ok(EXPECT),
+                HeaderName::Host => Ok(HOST),
+                HeaderName::IfMatch => Ok(IF_MATCH),
+                HeaderName::IfModifiedSince => Ok(IF_MODIFIED_SINCE),
+                HeaderName::IfNoneMatch => Ok(IF_NONE_MATCH),
+                HeaderName::IfRange => Ok(IF_RANGE),
+                HeaderName::IfUnmodifiedSince => Ok(IF_UNMODIFIED_SINCE),
+                HeaderName::Origin => Ok(ORIGIN),
+                HeaderName::Range => Ok(RANGE),
+                HeaderName::Referer => Ok(REFERER),
+                HeaderName::SecChUa => Ok(SEC_CH_UA),
+                HeaderName::SecChUaMobile => Ok(SEC_CH_UA_MOBILE),
+                HeaderName::SecChUaPlatform => Ok(SEC_CH_UA_PLATFORM),
+                HeaderName::SecFetchDest => Ok(SEC_FETCH_DEST),
+                HeaderName::SecFetchMode => Ok(SEC_FETCH_MODE),
+                HeaderName::SecFetchSite => Ok(SEC_FETCH_SITE),
+                HeaderName::SecFetchUser => Ok(SEC_FETCH_USER),
+                HeaderName::TransferEncoding => Ok(TRANSFER_ENCODING),
+                HeaderName::UserAgent => Ok(USER_AGENT),
+                HeaderName::XCSRFToken => Ok(X_CSRF_TOKEN),
+                HeaderName::XForwardedFor => Ok(X_FORWARDED_FOR),
+                HeaderName::XForwardedHost => Ok(X_FORWARDED_HOST),
+                HeaderName::XRealIp => Ok(X_REAL_IP),
+                HeaderName::XHubSignature256 => Ok(X_HUB_SIGNATURE_256),
+                HeaderName::Other(value) => Ok(value),
+                HeaderName::Unknown(value) => {
                     Err(Error::UnknownHeaderName(value.escape_ascii().to_string()))
                 }
             }
@@ -513,7 +484,7 @@ mod test {
         assert_eq!(X_CSRF_TOKEN.try_into(), Ok(HeaderName::XCSRFToken));
         assert_eq!(X_FORWARDED_FOR.try_into(), Ok(HeaderName::XForwardedFor));
         assert_eq!(X_FORWARDED_HOST.try_into(), Ok(HeaderName::XForwardedHost));
-        assert_eq!(X_REAL_IP.try_into(), Ok(HeaderName::XReadIp));
+        assert_eq!(X_REAL_IP.try_into(), Ok(HeaderName::XRealIp));
         assert_eq!(
             X_HUB_SIGNATURE_256.try_into(),
             Ok(HeaderName::XHubSignature256)
@@ -722,9 +693,9 @@ mod test {
             "X-FORWARDED-HOST".try_into(),
             Ok(HeaderName::XForwardedHost)
         );
-        assert_eq!("X-Real-Ip".try_into(), Ok(HeaderName::XReadIp));
-        assert_eq!("x-real-ip".try_into(), Ok(HeaderName::XReadIp));
-        assert_eq!("X-REAL-IP".try_into(), Ok(HeaderName::XReadIp));
+        assert_eq!("X-Real-Ip".try_into(), Ok(HeaderName::XRealIp));
+        assert_eq!("x-real-ip".try_into(), Ok(HeaderName::XRealIp));
+        assert_eq!("X-REAL-IP".try_into(), Ok(HeaderName::XRealIp));
         assert_eq!(
             "X-Hub-Signature-256".try_into(),
             Ok(HeaderName::XHubSignature256)
@@ -774,7 +745,7 @@ mod test {
         assert_eq!(HeaderName::XCSRFToken.as_ref(), X_CSRF_TOKEN);
         assert_eq!(HeaderName::XForwardedFor.as_ref(), X_FORWARDED_FOR);
         assert_eq!(HeaderName::XForwardedHost.as_ref(), X_FORWARDED_HOST);
-        assert_eq!(HeaderName::XReadIp.as_ref(), X_REAL_IP);
+        assert_eq!(HeaderName::XRealIp.as_ref(), X_REAL_IP);
         assert_eq!(HeaderName::XHubSignature256.as_ref(), X_HUB_SIGNATURE_256);
         assert_eq!(
             HeaderName::try_from_static(b"unknown").unwrap().as_ref(),

@@ -3,11 +3,6 @@ use min_http11_core::error::{Error, Result};
 use min_http11_core::hash::hash;
 use min_http11_core::method::Method;
 
-use min_http11_core::request::{
-    HeaderName, KnownHeaders, CONTENT_LENGTH, CONTENT_LENGTH_HASH, HOST, HOST_HASH, IF_MATCH,
-    IF_MATCH_HASH, IF_NONE_MATCH, IF_NONE_MATCH_HASH, X_HUB_SIGNATURE_256,
-    X_HUB_SIGNATURE_256_HASH,
-};
 #[cfg(not(feature = "_minimal"))]
 use min_http11_core::request::{
     ACCEPT, ACCEPT_ENCODING, ACCEPT_ENCODING_HASH, ACCEPT_HASH, ACCEPT_LANGUAGE,
@@ -16,9 +11,14 @@ use min_http11_core::request::{
     AUTHORIZATION_HASH, CONNECTION, CONNECTION_HASH, CONTENT_ENCODING, CONTENT_ENCODING_HASH,
     CONTENT_TYPE, CONTENT_TYPE_HASH, COOKIE, COOKIE_HASH, EXPECT, EXPECT_HASH, IF_MODIFIED_SINCE,
     IF_MODIFIED_SINCE_HASH, IF_RANGE, IF_RANGE_HASH, IF_UNMODIFIED_SINCE, IF_UNMODIFIED_SINCE_HASH,
-    ORIGIN, ORIGIN_HASH, RANGE, RANGE_HASH, TRANSFER_ENCODING, TRANSFER_ENCODING_HASH, USER_AGENT,
-    USER_AGENT_HASH, X_CSRF_TOKEN, X_CSRF_TOKEN_HASH, X_FORWARDED_FOR, X_FORWARDED_FOR_HASH,
-    X_FORWARDED_HOST, X_FORWARDED_HOST_HASH, X_REAL_IP, X_REAL_IP_HASH,
+    ORIGIN, ORIGIN_HASH, RANGE, RANGE_HASH, USER_AGENT, USER_AGENT_HASH, X_CSRF_TOKEN,
+    X_CSRF_TOKEN_HASH, X_FORWARDED_FOR, X_FORWARDED_FOR_HASH, X_FORWARDED_HOST,
+    X_FORWARDED_HOST_HASH, X_REAL_IP, X_REAL_IP_HASH,
+};
+use min_http11_core::request::{
+    CONTENT_LENGTH, CONTENT_LENGTH_HASH, HOST, HOST_HASH, HeaderName, IF_MATCH, IF_MATCH_HASH,
+    IF_NONE_MATCH, IF_NONE_MATCH_HASH, KnownHeaders, TRANSFER_ENCODING, TRANSFER_ENCODING_HASH,
+    X_HUB_SIGNATURE_256, X_HUB_SIGNATURE_256_HASH,
 };
 use min_http11_core::util::AsciiLowercaseTestExt;
 use min_http11_core::version::Version;
@@ -185,7 +185,7 @@ impl Parser {
                     debug!("{}: {}", key.escape_ascii(), value.escape_ascii());
                     if key.is_ascii_lowercase() {
                         let h = hash(key);
-                        let res = _with_known_header(known_headers, h, key, value);
+                        let res = _with_known_header(known_headers, h, key, value)?;
                         known_headers = res.0;
                         if res.1 {
                             custom_headers = _with_other_header(
@@ -199,7 +199,7 @@ impl Parser {
                     } else {
                         let key = key.to_ascii_lowercase();
                         let h = hash(&key);
-                        let res = _with_known_header(known_headers, hash(&key), &key, value);
+                        let res = _with_known_header(known_headers, h, &key, value)?;
                         known_headers = res.0;
                         if res.1 {
                             custom_headers = _with_other_header(
@@ -229,112 +229,141 @@ fn _with_known_header<'a>(
     hash: u32,
     lowercase_key: &[u8],
     value: &'a [u8],
-) -> (KnownHeaders<'a>, bool) {
+) -> Result<(KnownHeaders<'a>, bool)> {
+    macro_rules! set_once {
+        ($field:ident) => {
+            if known_headers.$field.is_some() {
+                return Err(Error::BadRequest);
+            }
+            known_headers.$field = Some(value);
+        };
+    }
     #[cfg(feature = "_minimal")]
     match hash {
         CONTENT_LENGTH_HASH if lowercase_key == CONTENT_LENGTH => {
-            known_headers.content_length = Some(value);
+            if known_headers.transfer_encoding.is_some() {
+                return Err(Error::BadRequest);
+            }
+            set_once!(content_length);
         }
         HOST_HASH if lowercase_key == HOST => {
-            known_headers.host = Some(value);
+            set_once!(host);
+        }
+        TRANSFER_ENCODING_HASH if lowercase_key == TRANSFER_ENCODING => {
+            if known_headers.content_length.is_some() {
+                return Err(Error::BadRequest);
+            }
+            set_once!(host);
         }
         IF_MATCH_HASH if lowercase_key == IF_MATCH => {
-            known_headers.if_match = Some(value);
+            set_once!(if_match);
         }
         IF_NONE_MATCH_HASH if lowercase_key == IF_NONE_MATCH => {
-            known_headers.if_none_match = Some(value);
+            set_once!(if_none_match);
         }
         X_HUB_SIGNATURE_256_HASH if lowercase_key == X_HUB_SIGNATURE_256 => {
-            known_headers.x_hub_signature_256_hash = Some(value);
+            set_once!(x_hub_signature_256_hash);
         }
-        _ => return (known_headers, true),
+        _ => return Ok((known_headers, true)),
     }
     #[cfg(not(feature = "_minimal"))]
     match hash {
         ACCEPT_HASH if lowercase_key == ACCEPT => {
-            known_headers.accept = Some(value);
+            set_once!(accept);
         }
         ACCEPT_ENCODING_HASH if lowercase_key == ACCEPT_ENCODING => {
-            known_headers.accept_encoding = Some(value);
+            set_once!(accept_encoding);
         }
         ACCEPT_LANGUAGE_HASH if lowercase_key == ACCEPT_LANGUAGE => {
-            known_headers.accept_language = Some(value);
+            set_once!(accept_language);
         }
         ACCESS_CONTROL_REQUEST_HEADERS_HASH if lowercase_key == ACCESS_CONTROL_REQUEST_HEADERS => {
-            known_headers.access_control_request_headers = Some(value);
+            set_once!(access_control_request_headers);
         }
         ACCESS_CONTROL_REQUEST_METHOD_HASH if lowercase_key == ACCESS_CONTROL_REQUEST_METHOD => {
-            known_headers.access_control_request_method = Some(value);
+            set_once!(access_control_request_method);
         }
         AUTHORIZATION_HASH if lowercase_key == AUTHORIZATION => {
-            known_headers.authorization = Some(value);
+            set_once!(authorization);
         }
         CONNECTION_HASH if lowercase_key == CONNECTION => {
-            known_headers.connection = Some(value);
+            set_once!(connection);
         }
         CONTENT_ENCODING_HASH if lowercase_key == CONTENT_ENCODING => {
-            known_headers.content_encoding = Some(value);
+            set_once!(content_encoding);
         }
         CONTENT_LENGTH_HASH if lowercase_key == CONTENT_LENGTH => {
-            known_headers.content_length = Some(value);
+            if known_headers.transfer_encoding.is_some() {
+                return Err(Error::BadRequest);
+            }
+            set_once!(content_length);
         }
         CONTENT_TYPE_HASH if lowercase_key == CONTENT_TYPE => {
-            known_headers.content_type = Some(value);
+            set_once!(content_type);
         }
         COOKIE_HASH if lowercase_key == COOKIE => {
-            known_headers.cookie = Some(value);
+            set_once!(cookie);
         }
         EXPECT_HASH if lowercase_key == EXPECT => {
-            known_headers.expect = Some(value);
+            set_once!(expect);
         }
         HOST_HASH if lowercase_key == HOST => {
-            known_headers.host = Some(value);
+            set_once!(host);
         }
         IF_MATCH_HASH if lowercase_key == IF_MATCH => {
-            known_headers.if_match = Some(value);
+            set_once!(if_match);
         }
         IF_MODIFIED_SINCE_HASH if lowercase_key == IF_MODIFIED_SINCE => {
-            known_headers.if_modified_since = Some(value);
+            set_once!(if_modified_since);
         }
         IF_NONE_MATCH_HASH if lowercase_key == IF_NONE_MATCH => {
-            known_headers.if_none_match = Some(value);
+            set_once!(if_none_match);
         }
         IF_RANGE_HASH if lowercase_key == IF_RANGE => {
-            known_headers.if_range = Some(value);
+            set_once!(if_range);
         }
         IF_UNMODIFIED_SINCE_HASH if lowercase_key == IF_UNMODIFIED_SINCE => {
-            known_headers.if_unmodified_since = Some(value);
+            set_once!(if_unmodified_since);
         }
         ORIGIN_HASH if lowercase_key == ORIGIN => {
-            known_headers.origin = Some(value);
+            set_once!(origin);
         }
         RANGE_HASH if lowercase_key == RANGE => {
-            known_headers.range = Some(value);
+            set_once!(range);
         }
         TRANSFER_ENCODING_HASH if lowercase_key == TRANSFER_ENCODING => {
-            known_headers.transfer_encoding = Some(value);
+            if known_headers.content_length.is_some() {
+                return Err(Error::BadRequest);
+            }
+            set_once!(transfer_encoding);
         }
         USER_AGENT_HASH if lowercase_key == USER_AGENT => {
-            known_headers.user_agent = Some(value);
+            set_once!(user_agent);
         }
         X_CSRF_TOKEN_HASH if lowercase_key == X_CSRF_TOKEN => {
-            known_headers.x_csrf_token = Some(value);
+            set_once!(x_csrf_token);
         }
         X_FORWARDED_FOR_HASH if lowercase_key == X_FORWARDED_FOR => {
-            known_headers.x_forwarded_for = Some(value);
+            set_once!(x_forwarded_for);
         }
         X_FORWARDED_HOST_HASH if lowercase_key == X_FORWARDED_HOST => {
-            known_headers.x_forwarded_host = Some(value);
+            set_once!(x_forwarded_host);
         }
         X_REAL_IP_HASH if lowercase_key == X_REAL_IP => {
-            known_headers.x_read_ip = Some(value);
+            if known_headers.x_real_ip.is_some() {
+                return Err(Error::BadRequest);
+            }
+            known_headers.x_real_ip = Some(value);
         }
         X_HUB_SIGNATURE_256_HASH if lowercase_key == X_HUB_SIGNATURE_256 => {
+            if known_headers.x_hub_signature_256_hash.is_some() {
+                return Err(Error::BadRequest);
+            }
             known_headers.x_hub_signature_256_hash = Some(value);
         }
-        _ => return (known_headers, true),
+        _ => return Ok((known_headers, true)),
     }
-    (known_headers, false)
+    Ok((known_headers, false))
 }
 
 fn _with_other_header<'a>(
@@ -344,14 +373,13 @@ fn _with_other_header<'a>(
     lowercase_key: &[u8],
     value: &'a [u8],
 ) -> Option<BTreeMap<&'static [u8], &'a [u8]>> {
-    if let Some(other_headers) = other_headers {
-        if let Some(&found) = other_headers.get(&hash) {
-            if found == lowercase_key {
-                let mut custom_headers = custom_headers.unwrap_or_default();
-                custom_headers.insert(found, value);
-                return Some(custom_headers);
-            }
-        }
+    if let Some(other_headers) = other_headers
+        && let Some(&found) = other_headers.get(&hash)
+        && found == lowercase_key
+    {
+        let mut custom_headers = custom_headers.unwrap_or_default();
+        custom_headers.insert(found, value);
+        return Some(custom_headers);
     }
     None
 }
@@ -429,6 +457,48 @@ mod test {
             Some(b"application/json".as_slice())
         );
         assert_eq!(known_headers.content_length, Some(b"0".as_slice()));
+        let bytes = b"\
+            GET /test HTTP/1.1\r\n\
+            Host: example.org\r\n\
+            Host: fake.xyz\r\n\
+            \r\n\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Get);
+        assert_eq!(&path, b"/test");
+        assert!(
+            parser
+                .parse_headers(&mut reader, &mut buffer)
+                .await
+                .is_err()
+        );
+        let bytes = b"\
+            GET /test HTTP/1.1\r\n\
+            Content-Length: 100\r\n\
+            Transfer-Encoding: chunked\r\n\
+            \r\n\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Get);
+        assert_eq!(&path, b"/test");
+        assert!(
+            parser
+                .parse_headers(&mut reader, &mut buffer)
+                .await
+                .is_err()
+        );
         let bytes = b"\
             GET /test HTTP/1.1\r\n\
             Host: example.org\r\n\

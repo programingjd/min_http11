@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_core"
-version = "0.1.12"
+version = "0.2.0"
 edition = "2024"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
