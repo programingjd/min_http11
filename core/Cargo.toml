@@ -1,6 +1,6 @@
 [package]
 name = "min_http11_core"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 resolver = "2"
 authors = ["Jerome David <programingjd@gmail.com>"]
@@ -12,9 +12,6 @@ repository = "https://github.com/programingjd/min_http11"
 include = [
     "Cargo.toml", "src", "LICENSE", "README.md"
 ]
-
-[dependencies]
-
 
 [dependencies.thiserror]
 version = "2.0"
