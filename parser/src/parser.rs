@@ -88,6 +88,12 @@ impl Parser {
             ..self
         }
     }
+    pub fn with_body_read_timeout(self, timeout: Duration) -> Self {
+        Parser {
+            body_read_timeout: timeout,
+            ..self
+        }
+    }
     pub fn with_request_line_max_size(self, size: u16) -> Self {
         Parser {
             request_line_max_size: size as u64,
@@ -97,6 +103,12 @@ impl Parser {
     pub fn with_headers_max_size(self, size: u16) -> Self {
         Parser {
             headers_max_size: size as u64,
+            ..self
+        }
+    }
+    pub fn with_body_max_size(self, size: u16) -> Self {
+        Parser {
+            body_max_size: size as u64,
             ..self
         }
     }
