@@ -14,7 +14,7 @@ include = [
 ]
 
 [dependencies.min_http11_core]
-version = "0.2.2"
+version = "0.2.3"
 path = "../core"
 default-features = false
 features = []
