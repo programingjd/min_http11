@@ -20,7 +20,6 @@ use min_http11_core::request::{
     X_CSRF_TOKEN_HASH, X_FORWARDED_FOR, X_FORWARDED_FOR_HASH, X_FORWARDED_HOST,
     X_FORWARDED_HOST_HASH, X_REAL_IP, X_REAL_IP_HASH,
 };
-use min_http11_core::util::AsciiLowercaseTestExt;
 use min_http11_core::version::Version;
 use read_until_slice::AsyncBufReadUntilSliceExt;
 use std::collections::BTreeMap;
@@ -110,6 +109,13 @@ const CR: u8 = b'\r';
 const LF: u8 = b'\n';
 const CRLF: &[u8] = b"\r\n";
 
+#[derive(Copy, Clone, Debug)]
+pub enum BodyEncoding {
+    Identity { content_length: u64 },
+    Chunked,
+    Unsupported,
+}
+
 impl Parser {
     pub async fn parse_request_line<'a, 'b, 'c: 'a>(
         &'a self,
@@ -191,16 +197,17 @@ impl Parser {
                     break;
                 }
             }
-            let buffer = &buffer[start..buffer.len() - 2];
+            let end = buffer.len() - 2;
+            let buffer = &mut buffer[start..end];
             let mut known_headers = KnownHeaders::default();
             let mut custom_headers = None;
             if !buffer.is_empty() {
-                let mut iter = memchr_iter(CR, buffer);
-                let mut i = 0;
-                while i < buffer.len() {
+                let mut remaining = buffer;
+                while !remaining.is_empty() {
+                    let mut iter = memchr_iter(CR, remaining);
                     let j = loop {
                         if let Some(i) = iter.next() {
-                            if i + 1 < buffer.len() && buffer[i + 1] == LF {
+                            if i + 1 < remaining.len() && remaining[i + 1] == LF {
                                 break i;
                             }
                         } else {
@@ -211,50 +218,36 @@ impl Parser {
                             });
                         }
                     };
-                    let line = &buffer[i..j];
-                    i = j + 2;
+                    let (line, rest) = remaining.split_at_mut(j + 2);
+                    remaining = rest;
+                    let line = &mut line[..j];
                     let mut iter = memchr_iter(COLON, line);
                     let i = iter.next().ok_or(Error::BadRequest)?;
                     if i == 0 {
                         return Err(Error::BadRequest);
                     }
-                    let key = &line[..i];
+                    let (key, value) = line.split_at_mut(i);
                     if key.is_empty()
                         || key[0].is_ascii_whitespace()
                         || key[key.len() - 1].is_ascii_whitespace()
                     {
                         return Err(Error::BadRequest);
                     }
-                    let value = &line[i + 1..].trim_ascii();
+                    let value = value[1..].trim_ascii();
                     debug!("{}: {}", key.escape_ascii(), value.escape_ascii());
-                    if key.is_ascii_lowercase() {
-                        let h = hash(key);
-                        let res = _with_known_header(known_headers, h, key, value)?;
-                        known_headers = res.0;
-                        if res.1 {
-                            custom_headers = _with_other_header(
-                                custom_headers,
-                                self.other_headers.as_ref(),
-                                h,
-                                key,
-                                value,
-                            );
-                        }
-                    } else {
-                        let key = key.to_ascii_lowercase();
-                        let h = hash(&key);
-                        let res = _with_known_header(known_headers, h, &key, value)?;
-                        known_headers = res.0;
-                        if res.1 {
-                            custom_headers = _with_other_header(
-                                custom_headers,
-                                self.other_headers.as_ref(),
-                                h,
-                                &key,
-                                value,
-                            );
-                        }
-                    };
+                    key.make_ascii_lowercase();
+                    let h = hash(key);
+                    let res = _with_known_header(known_headers, h, key, value)?;
+                    known_headers = res.0;
+                    if res.1 {
+                        custom_headers = _with_other_header(
+                            custom_headers,
+                            self.other_headers.as_ref(),
+                            h,
+                            key,
+                            value,
+                        );
+                    }
                 }
             }
             Ok((known_headers, custom_headers))
@@ -263,48 +256,56 @@ impl Parser {
         .map_err(|_| Error::ReadTimeout)?
     }
 
-    pub async fn parse_body<'a, 'b, 'c: 'a>(
-        &'a self,
-        reader: &'b mut (impl AsyncBufRead + Unpin),
-        buffer: &'c mut Vec<u8>,
-        headers: &'a KnownHeaders<'a>,
-    ) -> Result<&'c [u8]> {
+    pub fn body_encoding(&self, headers: &KnownHeaders) -> Result<BodyEncoding> {
         match headers.transfer_encoding.map(|it| it.trim_ascii()).as_ref() {
             Some(value) if value.eq_ignore_ascii_case(b"chunked") => {
-                return self.parse_chunked_body(reader, buffer).await;
+                return Ok(BodyEncoding::Chunked);
             }
             Some(value) if value.eq_ignore_ascii_case(b"identity") => {}
-            Some(_) => {
-                return Err(Error::UnsupportedTransferEncoding);
-            }
+            Some(_) => return Ok(BodyEncoding::Unsupported),
             None => {}
-        };
+        }
         if let Some(content_length) = headers
             .content_length
             .and_then(|it| from_utf8(it).ok())
             .and_then(|it| it.parse::<u64>().ok())
         {
-            if content_length > self.body_max_size {
-                Err(Error::RequestTooLarge)
-            } else {
-                let body = timeout(self.body_read_timeout, async {
-                    let mut reader = reader.take(content_length);
-                    let n = reader.read_to_end(buffer).await?;
-                    if (n as u64) < content_length {
-                        return Err(if reader.limit() == 0 {
-                            Error::RequestTooLarge
-                        } else {
-                            Error::UnexpectedEndOfFile
-                        });
-                    }
-                    Ok(&buffer[buffer.len() - n..])
-                })
-                .await
-                .map_err(|_| Error::ReadTimeout)?;
-                Ok(body?)
-            }
+            Ok(BodyEncoding::Identity { content_length })
         } else {
             Err(Error::BadRequest)
+        }
+    }
+
+    pub async fn parse_body<'a, 'b, 'c: 'a>(
+        &'a self,
+        reader: &'b mut (impl AsyncBufRead + Unpin),
+        buffer: &'c mut Vec<u8>,
+        body_encoding: BodyEncoding,
+    ) -> Result<&'c [u8]> {
+        match body_encoding {
+            BodyEncoding::Identity { content_length } => {
+                if content_length > self.body_max_size {
+                    Err(Error::RequestTooLarge)
+                } else {
+                    let body = timeout(self.body_read_timeout, async {
+                        let mut reader = reader.take(content_length);
+                        let n = reader.read_to_end(buffer).await?;
+                        if (n as u64) < content_length {
+                            return Err(if reader.limit() == 0 {
+                                Error::RequestTooLarge
+                            } else {
+                                Error::UnexpectedEndOfFile
+                            });
+                        }
+                        Ok(&buffer[buffer.len() - n..])
+                    })
+                    .await
+                    .map_err(|_| Error::ReadTimeout)?;
+                    Ok(body?)
+                }
+            }
+            BodyEncoding::Chunked => self.parse_chunked_body(reader, buffer).await,
+            BodyEncoding::Unsupported => Err(Error::UnsupportedTransferEncoding),
         }
     }
 
@@ -714,5 +715,161 @@ mod test {
             custom_headers.get(b"x-test".as_slice()),
             Some(&b"1".as_slice())
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn parse_request_with_body() {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .with_ansi(true)
+            .compact()
+            .init();
+        let parser = Parser::default();
+        let bytes = b"\
+            POST /post HTTP/1.1\r\n\
+            Host: example.org\r\n\
+            content-type: application/json\r\n\
+            content-length: 0\r\n\
+            \r\n\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Post);
+        assert_eq!(&path, b"/post");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(known_headers.host, Some(b"example.org".as_slice()));
+        #[cfg(not(feature = "_minimal"))]
+        assert_eq!(
+            known_headers.content_type,
+            Some(b"application/json".as_slice())
+        );
+        assert_eq!(known_headers.content_length, Some(b"0".as_slice()));
+        let body_encoding = parser.body_encoding(&known_headers).unwrap();
+        assert!(
+            matches!(body_encoding, BodyEncoding::Identity { content_length } if content_length == 0)
+        );
+        let body = parser
+            .parse_body(&mut reader, &mut buffer, body_encoding)
+            .await
+            .unwrap();
+        assert_eq!(body, b"");
+
+        let bytes = b"\
+            POST /test HTTP/1.1\r\n\
+            Host: example.org\r\n\
+            Content-Length: 11\r\n\
+            \r\n\
+            hello world\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Post);
+        assert_eq!(&path, b"/test");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(known_headers.content_length, Some(b"11".as_slice()));
+        let body_encoding = parser.body_encoding(&known_headers).unwrap();
+        assert!(
+            matches!(body_encoding, BodyEncoding::Identity { content_length } if content_length == 11)
+        );
+        let body = parser
+            .parse_body(&mut reader, &mut buffer, body_encoding)
+            .await
+            .unwrap();
+        assert_eq!(body, b"hello world");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn parse_request_with_chunked_body() {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .with_ansi(true)
+            .compact()
+            .init();
+        let parser = Parser::default();
+        let bytes = b"\
+            POST /test HTTP/1.1\r\n\
+            Host: example.org\r\n\
+            Transfer-Encoding: chunked\r\n\
+            \r\n\
+            10\r\n\
+            hello rusty worl\r\n\
+            2\r\n\
+            d!\r\n\
+            0\r\n\
+            \r\n\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Post);
+        assert_eq!(&path, b"/test");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(known_headers.transfer_encoding, Some(b"chunked".as_slice()));
+        let body_encoding = parser.body_encoding(&known_headers).unwrap();
+        assert!(matches!(body_encoding, BodyEncoding::Chunked));
+        let body = parser
+            .parse_body(&mut reader, &mut buffer, body_encoding)
+            .await
+            .unwrap();
+        assert_eq!(body, b"hello rusty world!");
+
+        let bytes = b"\
+            POST /test HTTP/1.1\r\n\
+            Host: example.org\r\n\
+            Transfer-Encoding: chunked\r\n\
+            \r\n\
+            d\r\n\
+            chunked with \r\n\
+            8\r\n\
+            trailers\r\n\
+            0\r\n\
+            X-Trailer-One: t1\r\n\
+            X-Trailer-Two: t2\r\n\
+            \r\n\
+        ";
+        let cursor = Cursor::new(bytes);
+        let mut reader = BufReader::new(cursor);
+        let mut buffer = vec![];
+        let (method, path) = parser
+            .parse_request_line(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(method, Method::Post);
+        assert_eq!(&path, b"/test");
+        let (known_headers, _) = parser
+            .parse_headers(&mut reader, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(known_headers.transfer_encoding, Some(b"chunked".as_slice()));
+        let body_encoding = parser.body_encoding(&known_headers).unwrap();
+        assert!(matches!(body_encoding, BodyEncoding::Chunked));
+        let body = parser
+            .parse_body(&mut reader, &mut buffer, body_encoding)
+            .await
+            .unwrap();
+        assert_eq!(body, b"chunked with trailers");
     }
 }
