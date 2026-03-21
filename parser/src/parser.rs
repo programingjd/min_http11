@@ -605,15 +605,9 @@ mod test {
     use super::*;
     use std::io::Cursor;
     use tokio::io::BufReader;
-    use tracing::Level;
 
     #[tokio::test(flavor = "current_thread")]
     async fn parse_request_line_and_headers() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
-            .with_ansi(true)
-            .compact()
-            .init();
         let parser = Parser::default();
         let bytes = b"\
             GET /test HTTP/1.1\r\n\
@@ -746,11 +740,6 @@ mod test {
 
     #[tokio::test(flavor = "current_thread")]
     async fn parse_request_with_body() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
-            .with_ansi(true)
-            .compact()
-            .init();
         let parser = Parser::default();
         let bytes = b"\
             POST /post HTTP/1.1\r\n\
@@ -823,11 +812,6 @@ mod test {
 
     #[tokio::test(flavor = "current_thread")]
     async fn parse_request_with_chunked_body() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
-            .with_ansi(true)
-            .compact()
-            .init();
         let parser = Parser::default();
         let bytes = b"\
             POST /test HTTP/1.1\r\n\

@@ -42,11 +42,6 @@ version = "1.50"
 default-features = false
 features = ["test-util", "macros", "net", "rt"]
 
-[dev-dependencies.tracing-subscriber]
-version = "0.3"
-default-features = false
-features = ["std", "fmt", "ansi"]
-
 [features]
 default = []
 _minimal = ["min_http11_core/_minimal"]
