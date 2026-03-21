@@ -1,8 +1,13 @@
-use memchr::memchr_iter;
+use memchr::{memchr, memchr_iter};
 use min_http11_core::error::{Error, Result};
 use min_http11_core::hash::hash;
 use min_http11_core::method::Method;
 
+use min_http11_core::request::{
+    HeaderName, KnownHeaders, CONTENT_LENGTH, CONTENT_LENGTH_HASH, HOST, HOST_HASH, IF_MATCH,
+    IF_MATCH_HASH, IF_NONE_MATCH, IF_NONE_MATCH_HASH, TRANSFER_ENCODING, TRANSFER_ENCODING_HASH,
+    X_HUB_SIGNATURE_256, X_HUB_SIGNATURE_256_HASH,
+};
 #[cfg(not(feature = "_minimal"))]
 use min_http11_core::request::{
     ACCEPT, ACCEPT_ENCODING, ACCEPT_ENCODING_HASH, ACCEPT_HASH, ACCEPT_LANGUAGE,
@@ -15,15 +20,11 @@ use min_http11_core::request::{
     X_CSRF_TOKEN_HASH, X_FORWARDED_FOR, X_FORWARDED_FOR_HASH, X_FORWARDED_HOST,
     X_FORWARDED_HOST_HASH, X_REAL_IP, X_REAL_IP_HASH,
 };
-use min_http11_core::request::{
-    CONTENT_LENGTH, CONTENT_LENGTH_HASH, HOST, HOST_HASH, HeaderName, IF_MATCH, IF_MATCH_HASH,
-    IF_NONE_MATCH, IF_NONE_MATCH_HASH, KnownHeaders, TRANSFER_ENCODING, TRANSFER_ENCODING_HASH,
-    X_HUB_SIGNATURE_256, X_HUB_SIGNATURE_256_HASH,
-};
 use min_http11_core::util::AsciiLowercaseTestExt;
 use min_http11_core::version::Version;
 use read_until_slice::AsyncBufReadUntilSliceExt;
 use std::collections::BTreeMap;
+use std::str::from_utf8;
 use std::time::Duration;
 use tokio::io::{AsyncBufRead, AsyncReadExt};
 use tokio::time::timeout;
@@ -40,8 +41,10 @@ pub struct Request<'a> {
 pub struct Parser {
     request_line_read_timeout: Duration,
     headers_read_timeout: Duration,
+    body_read_timeout: Duration,
     request_line_max_size: u64,
     headers_max_size: u64,
+    body_max_size: u64,
     other_headers: Option<BTreeMap<u32, &'static [u8]>>,
 }
 
@@ -50,8 +53,10 @@ impl Default for Parser {
         Self {
             request_line_read_timeout: Duration::from_millis(200_u64),
             headers_read_timeout: Duration::from_millis(200_u64),
+            body_read_timeout: Duration::from_millis(10_000_u64),
             request_line_max_size: 4_096_u64,
             headers_max_size: 16_384_u64,
+            body_max_size: 65_536_u64,
             other_headers: None,
         }
     }
@@ -100,10 +105,10 @@ impl Parser {
 
 const SPACE: u8 = b' ';
 const COLON: u8 = b':';
+const SEMI_COLON: u8 = b';';
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
 const CRLF: &[u8] = b"\r\n";
-const CRLF_CRLF: &[u8] = b"\r\n\r\n";
 
 impl Parser {
     pub async fn parse_request_line<'a, 'b, 'c: 'a>(
@@ -111,17 +116,31 @@ impl Parser {
         reader: &'b mut (impl AsyncBufRead + Unpin),
         buffer: &'c mut Vec<u8>,
     ) -> Result<(Method, &'c [u8])> {
-        let request_line = timeout(self.request_line_read_timeout, async {
+        timeout(self.request_line_read_timeout, async {
             let mut reader = reader.take(self.request_line_max_size);
-            let n = reader.read_until_slice(CRLF, buffer).await?;
+            let n = reader.read_until_slice(CRLF, buffer).await.map_err(|err| {
+                if reader.limit() == 0 {
+                    Error::RequestTooLarge
+                } else {
+                    err.into()
+                }
+            })?;
             if n == 0 {
-                return Err(Error::UnexpectedEndOfFile);
+                return Err(if reader.limit() == 0 {
+                    Error::RequestTooLarge
+                } else {
+                    Error::UnexpectedEndOfFile
+                });
             }
-            let buffer = &buffer[buffer.len() - n..];
-            if !buffer.ends_with(CRLF) {
-                return Err(Error::UnexpectedEndOfFile);
-            }
-            let request_line = &buffer[..buffer.len() - 2];
+            let request_line = buffer[buffer.len() - n..]
+                .strip_suffix(CRLF)
+                .ok_or_else(|| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    }
+                })?;
             debug!("{}", request_line.escape_ascii());
             let mut iter = memchr_iter(SPACE, request_line);
             let first = iter.next().ok_or(Error::BadRequest)?;
@@ -134,12 +153,8 @@ impl Parser {
             let _ = Version::try_from(&request_line[second + 1..])?;
             Ok((method, path))
         })
-        .await;
-        let request_line = match request_line {
-            Err(_) => Err(Error::ReadTimeout)?,
-            Ok(result) => result?,
-        };
-        Ok(request_line)
+        .await
+        .map_err(|_| Error::ReadTimeout)?
     }
 
     pub async fn parse_headers<'a, 'b, 'c: 'a>(
@@ -147,17 +162,36 @@ impl Parser {
         reader: &'b mut (impl AsyncBufRead + Unpin),
         buffer: &'c mut Vec<u8>,
     ) -> Result<(KnownHeaders<'a>, Option<BTreeMap<&'static [u8], &'a [u8]>>)> {
-        let headers = timeout(self.headers_read_timeout, async {
+        timeout(self.headers_read_timeout, async {
             let mut reader = reader.take(self.headers_max_size);
-            let n = reader.read_until_slice(CRLF_CRLF, buffer).await?;
-            if n == 0 {
-                return Err(Error::UnexpectedEndOfFile);
+            let start = buffer.len();
+            loop {
+                let n = reader.read_until_slice(CRLF, buffer).await.map_err(|err| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        err.into()
+                    }
+                })?;
+                if n == 0 {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                if !buffer.ends_with(CRLF) {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                if n == 2 {
+                    break;
+                }
             }
-            let buffer = &buffer[buffer.len() - n..];
-            if !buffer.ends_with(CRLF_CRLF) {
-                return Err(Error::UnexpectedEndOfFile);
-            }
-            let buffer = &buffer[..buffer.len() - 2];
+            let buffer = &buffer[start..buffer.len() - 2];
             let mut known_headers = KnownHeaders::default();
             let mut custom_headers = None;
             if !buffer.is_empty() {
@@ -170,18 +204,28 @@ impl Parser {
                                 break i;
                             }
                         } else {
-                            return Err(Error::UnexpectedEndOfFile);
+                            return Err(if reader.limit() == 0 {
+                                Error::RequestTooLarge
+                            } else {
+                                Error::UnexpectedEndOfFile
+                            });
                         }
                     };
                     let line = &buffer[i..j];
                     i = j + 2;
-                    let mut iter = memchr_iter(SPACE, line);
-                    let first = iter.next().ok_or(Error::BadRequest)?;
-                    if first == 0 || line[first - 1] != COLON {
+                    let mut iter = memchr_iter(COLON, line);
+                    let i = iter.next().ok_or(Error::BadRequest)?;
+                    if i == 0 {
                         return Err(Error::BadRequest);
                     }
-                    let key = &line[..first - 1];
-                    let value = &line[first + 1..];
+                    let key = &line[..i];
+                    if key.is_empty()
+                        || key[0].is_ascii_whitespace()
+                        || key[key.len() - 1].is_ascii_whitespace()
+                    {
+                        return Err(Error::BadRequest);
+                    }
+                    let value = &line[i + 1..].trim_ascii();
                     debug!("{}: {}", key.escape_ascii(), value.escape_ascii());
                     if key.is_ascii_lowercase() {
                         let h = hash(key);
@@ -190,7 +234,7 @@ impl Parser {
                         if res.1 {
                             custom_headers = _with_other_header(
                                 custom_headers,
-                                &self.other_headers,
+                                self.other_headers.as_ref(),
                                 h,
                                 key,
                                 value,
@@ -204,7 +248,7 @@ impl Parser {
                         if res.1 {
                             custom_headers = _with_other_header(
                                 custom_headers,
-                                &self.other_headers,
+                                self.other_headers.as_ref(),
                                 h,
                                 &key,
                                 value,
@@ -215,12 +259,162 @@ impl Parser {
             }
             Ok((known_headers, custom_headers))
         })
-        .await;
-        let request_line = match headers {
-            Err(_) => Err(Error::ReadTimeout)?,
-            Ok(result) => result?,
+        .await
+        .map_err(|_| Error::ReadTimeout)?
+    }
+
+    pub async fn parse_body<'a, 'b, 'c: 'a>(
+        &'a self,
+        reader: &'b mut (impl AsyncBufRead + Unpin),
+        buffer: &'c mut Vec<u8>,
+        headers: &'a KnownHeaders<'a>,
+    ) -> Result<&'c [u8]> {
+        match headers.transfer_encoding.map(|it| it.trim_ascii()).as_ref() {
+            Some(value) if value.eq_ignore_ascii_case(b"chunked") => {
+                return self.parse_chunked_body(reader, buffer).await;
+            }
+            Some(value) if value.eq_ignore_ascii_case(b"identity") => {}
+            Some(_) => {
+                return Err(Error::UnsupportedTransferEncoding);
+            }
+            None => {}
         };
-        Ok(request_line)
+        if let Some(content_length) = headers
+            .content_length
+            .and_then(|it| from_utf8(it).ok())
+            .and_then(|it| it.parse::<u64>().ok())
+        {
+            if content_length > self.body_max_size {
+                Err(Error::RequestTooLarge)
+            } else {
+                let body = timeout(self.body_read_timeout, async {
+                    let mut reader = reader.take(content_length);
+                    let n = reader.read_to_end(buffer).await?;
+                    if (n as u64) < content_length {
+                        return Err(if reader.limit() == 0 {
+                            Error::RequestTooLarge
+                        } else {
+                            Error::UnexpectedEndOfFile
+                        });
+                    }
+                    Ok(&buffer[buffer.len() - n..])
+                })
+                .await
+                .map_err(|_| Error::ReadTimeout)?;
+                Ok(body?)
+            }
+        } else {
+            Err(Error::BadRequest)
+        }
+    }
+
+    async fn parse_chunked_body<'a, 'b, 'c: 'a>(
+        &'a self,
+        reader: &'b mut (impl AsyncBufRead + Unpin),
+        buffer: &'c mut Vec<u8>,
+    ) -> Result<&'c [u8]> {
+        timeout(self.body_read_timeout, async {
+            let mut reader = reader.take(self.body_max_size);
+            let start = buffer.len();
+            let mut discarded = 0;
+            loop {
+                let n = reader.read_until_slice(CRLF, buffer).await.map_err(|err| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        err.into()
+                    }
+                })?;
+                if n == 0 {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                if !buffer.ends_with(CRLF) {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                let chunk_size_line = &buffer[buffer.len() - n..buffer.len() - 2];
+                let end = memchr(SEMI_COLON, chunk_size_line).unwrap_or(chunk_size_line.len());
+                let chunk_size = from_utf8(chunk_size_line[..end].trim_ascii())
+                    .ok()
+                    .and_then(|it| u64::from_str_radix(it, 16).ok())
+                    .ok_or(Error::BadRequest)?;
+                if chunk_size == 0 {
+                    buffer.truncate(buffer.len() - n);
+                    break;
+                }
+                if (buffer.len() - start + discarded) as u64 + chunk_size > self.body_max_size {
+                    return Err(Error::RequestTooLarge);
+                }
+                discarded += n;
+                buffer.truncate(buffer.len() - n);
+                {
+                    let mut reader = (&mut reader).take(chunk_size);
+                    let n = reader.read_to_end(buffer).await?;
+                    if (n as u64) < chunk_size {
+                        return Err(if reader.limit() == 0 {
+                            Error::RequestTooLarge
+                        } else {
+                            Error::UnexpectedEndOfFile
+                        });
+                    }
+                }
+                if reader.read_u8().await.map_err(|err| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        err.into()
+                    }
+                })? != CR
+                    || reader.read_u8().await.map_err(|err| {
+                        if reader.limit() == 0 {
+                            Error::RequestTooLarge
+                        } else {
+                            err.into()
+                        }
+                    })? != LF
+                {
+                    return Err(Error::BadRequest);
+                }
+                discarded += 2;
+            }
+            loop {
+                let n = reader.read_until_slice(CRLF, buffer).await.map_err(|err| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        err.into()
+                    }
+                })?;
+                if n == 0 {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                if !buffer.ends_with(CRLF) {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
+                buffer.truncate(buffer.len() - n);
+                if n == 2 {
+                    break;
+                }
+            }
+            Ok(&buffer[start..])
+        })
+        .await
+        .map_err(|_| Error::ReadTimeout)?
     }
 }
 
@@ -253,7 +447,7 @@ fn _with_known_header<'a>(
             if known_headers.content_length.is_some() {
                 return Err(Error::BadRequest);
             }
-            set_once!(host);
+            set_once!(transfer_encoding);
         }
         IF_MATCH_HASH if lowercase_key == IF_MATCH => {
             set_once!(if_match);
@@ -350,16 +544,10 @@ fn _with_known_header<'a>(
             set_once!(x_forwarded_host);
         }
         X_REAL_IP_HASH if lowercase_key == X_REAL_IP => {
-            if known_headers.x_real_ip.is_some() {
-                return Err(Error::BadRequest);
-            }
-            known_headers.x_real_ip = Some(value);
+            set_once!(x_real_ip);
         }
         X_HUB_SIGNATURE_256_HASH if lowercase_key == X_HUB_SIGNATURE_256 => {
-            if known_headers.x_hub_signature_256_hash.is_some() {
-                return Err(Error::BadRequest);
-            }
-            known_headers.x_hub_signature_256_hash = Some(value);
+            set_once!(x_hub_signature_256_hash);
         }
         _ => return Ok((known_headers, true)),
     }
@@ -368,7 +556,7 @@ fn _with_known_header<'a>(
 
 fn _with_other_header<'a>(
     custom_headers: Option<BTreeMap<&'static [u8], &'a [u8]>>,
-    other_headers: &Option<BTreeMap<u32, &'static [u8]>>,
+    other_headers: Option<&BTreeMap<u32, &'static [u8]>>,
     hash: u32,
     lowercase_key: &[u8],
     value: &'a [u8],
