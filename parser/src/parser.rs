@@ -106,7 +106,7 @@ impl Parser {
             ..self
         }
     }
-    pub fn with_body_max_size(self, size: u16) -> Self {
+    pub fn with_body_max_size(self, size: u32) -> Self {
         Parser {
             body_max_size: size as u64,
             ..self
