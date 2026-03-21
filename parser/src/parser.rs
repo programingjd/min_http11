@@ -293,7 +293,7 @@ impl Parser {
     }
 
     pub fn body_encoding(&self, headers: &KnownHeaders) -> Result<BodyEncoding> {
-        match headers.transfer_encoding.map(|it| it.trim_ascii()).as_ref() {
+        match headers.transfer_encoding.map(|it| it.trim_ascii()) {
             Some(value) if value.eq_ignore_ascii_case(b"chunked") => {
                 return Ok(BodyEncoding::Chunked);
             }
@@ -301,14 +301,18 @@ impl Parser {
             Some(_) => return Ok(BodyEncoding::Unsupported),
             None => {}
         }
-        if let Some(content_length) = headers
-            .content_length
-            .and_then(|it| from_utf8(it).ok())
-            .and_then(|it| it.parse::<u64>().ok())
-        {
-            Ok(BodyEncoding::Identity { content_length })
-        } else {
-            Err(Error::BadRequest)
+        match headers.content_length {
+            Some(content_length) => {
+                if let Some(content_length) = from_utf8(content_length)
+                    .ok()
+                    .and_then(|it| it.parse::<u64>().ok())
+                {
+                    Ok(BodyEncoding::Identity { content_length })
+                } else {
+                    Err(Error::BadRequest)
+                }
+            }
+            None => Ok(BodyEncoding::Identity { content_length: 0 }),
         }
     }
 
