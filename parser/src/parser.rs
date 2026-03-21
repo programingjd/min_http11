@@ -105,6 +105,7 @@ impl Parser {
 const SPACE: u8 = b' ';
 const COLON: u8 = b':';
 const SEMI_COLON: u8 = b';';
+const DEL: u8 = 0x7F;
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
 const CRLF: &[u8] = b"\r\n";
@@ -131,12 +132,38 @@ impl Parser {
                     err.into()
                 }
             })?;
-            if n == 0 {
+            if n < 2 {
                 return Err(if reader.limit() == 0 {
                     Error::RequestTooLarge
                 } else {
                     Error::UnexpectedEndOfFile
                 });
+            }
+            if n == 2 {
+                // Allow 1 leading empty line
+                // [RFC 9112](https://datatracker.ietf.org/doc/html/rfc9112#section-2.2)
+                if !buffer.ends_with(CRLF) {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::BadRequest
+                    });
+                }
+                buffer.truncate(buffer.len() - 2);
+                let n = reader.read_until_slice(CRLF, buffer).await.map_err(|err| {
+                    if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        err.into()
+                    }
+                })?;
+                if n < 2 {
+                    return Err(if reader.limit() == 0 {
+                        Error::RequestTooLarge
+                    } else {
+                        Error::UnexpectedEndOfFile
+                    });
+                }
             }
             let request_line = buffer[buffer.len() - n..]
                 .strip_suffix(CRLF)
@@ -227,10 +254,7 @@ impl Parser {
                         return Err(Error::BadRequest);
                     }
                     let (key, value) = line.split_at_mut(i);
-                    if key.is_empty()
-                        || key[0].is_ascii_whitespace()
-                        || key[key.len() - 1].is_ascii_whitespace()
-                    {
+                    if key.is_empty() || key.iter().any(|&b| b <= SPACE || b >= DEL) {
                         return Err(Error::BadRequest);
                     }
                     let value = value[1..].trim_ascii();
@@ -342,6 +366,9 @@ impl Parser {
                 }
                 let chunk_size_line = &buffer[buffer.len() - n..buffer.len() - 2];
                 let end = memchr(SEMI_COLON, chunk_size_line).unwrap_or(chunk_size_line.len());
+                if end > 16 {
+                    return Err(Error::BadRequest);
+                }
                 let chunk_size = from_utf8(chunk_size_line[..end].trim_ascii())
                     .ok()
                     .and_then(|it| u64::from_str_radix(it, 16).ok())
