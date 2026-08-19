@@ -9,6 +9,7 @@ const PUT: &[u8] = b"PUT";
 const DELETE: &[u8] = b"DELETE";
 const OPTIONS: &[u8] = b"OPTIONS";
 const PATCH: &[u8] = b"PATCH";
+const QUERY: &[u8] = b"QUERY";
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Method {
@@ -19,6 +20,7 @@ pub enum Method {
     Delete,
     Options,
     Patch,
+    Query,
     Other(&'static [u8]),
 }
 
@@ -60,6 +62,7 @@ impl<'a> TryFrom<&'a [u8]> for Method {
             DELETE => Ok(Method::Delete),
             OPTIONS => Ok(Method::Options),
             PATCH => Ok(Method::Patch),
+            QUERY => Ok(Method::Query),
             other => Err(Error::UnknownMethod(other.escape_ascii().to_string())),
         }
     }
@@ -75,6 +78,7 @@ impl From<&Method> for &'static [u8] {
             Method::Delete => DELETE,
             Method::Options => OPTIONS,
             Method::Patch => PATCH,
+            Method::Query => QUERY,
             Method::Other(value) => value,
         }
     }
@@ -107,6 +111,7 @@ mod test {
         assert_eq!(DELETE.try_into(), Ok(Method::Delete));
         assert_eq!(OPTIONS.try_into(), Ok(Method::Options));
         assert_eq!(PATCH.try_into(), Ok(Method::Patch));
+        assert_eq!(QUERY.try_into(), Ok(Method::Query));
         let unknown: Result<Method> = b"UNKNOWN".try_into();
         assert!(unknown.is_err());
     }
@@ -120,6 +125,7 @@ mod test {
         assert_eq!("DELETE".try_into(), Ok(Method::Delete));
         assert_eq!("OPTIONS".try_into(), Ok(Method::Options));
         assert_eq!("PATCH".try_into(), Ok(Method::Patch));
+        assert_eq!("QUERY".try_into(), Ok(Method::Query));
         let unknown: Result<Method> = "UNKNOWN".try_into();
         assert!(unknown.is_err());
     }
@@ -133,6 +139,7 @@ mod test {
         assert_eq!(Method::Delete.as_ref(), DELETE);
         assert_eq!(Method::Options.as_ref(), OPTIONS);
         assert_eq!(Method::Patch.as_ref(), PATCH);
+        assert_eq!(Method::Query.as_ref(), QUERY);
         assert_eq!(Method::from_static(b"UNKNOWN").as_ref(), b"UNKNOWN")
     }
 }
